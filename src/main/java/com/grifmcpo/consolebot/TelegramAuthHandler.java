@@ -15,12 +15,15 @@ public class TelegramAuthHandler {
         this.playerManager = playerManager;
     }
 
-    public SendMessage getAuthButtons(String playerName, String code) {
+    public SendMessage getAuthButtons(String playerName) {
         SendMessage message = new SendMessage();
-        message.setChatId(playerManager.getTelegramId(playerName));
+        String telegramId = playerManager.getTelegramId(playerName);
+        if (telegramId == null) {
+            return null;
+        }
+        message.setChatId(telegramId);
         message.setText("🔐 **Подтверждение входа**\n\n" +
-                "Игрок **" + playerName + "** пытается войти на сервер.\n" +
-                "Код подтверждения: `" + code + "`\n\n" +
+                "Игрок **" + playerName + "** пытается войти на сервер.\n\n" +
                 "Разрешить вход?");
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -45,23 +48,5 @@ public class TelegramAuthHandler {
                 "`" + code + "`\n\n" +
                 "Отправьте этот код боту командой:\n" +
                 "`/register " + code + "`";
-    }
-
-    public SendMessage getKickMessage(String playerName) {
-        SendMessage message = new SendMessage();
-        message.setChatId(playerManager.getTelegramId(playerName));
-        message.setText("⚠️ **Ваш аккаунт был исключен с сервера!**\n\n" +
-                "Игрок **" + playerName + "** был кикнут с сервера.\n" +
-                "Причина: Аккаунт был исключен с бота");
-        return message;
-    }
-
-    public SendMessage getUnregisterMessage(String playerName) {
-        SendMessage message = new SendMessage();
-        message.setChatId(playerManager.getTelegramId(playerName));
-        message.setText("🔓 **Аккаунт отвязан!**\n\n" +
-                "Аккаунт **" + playerName + "** успешно отвязан от Telegram.\n" +
-                "Теперь вы можете привязать другой аккаунт через /tg в игре.");
-        return message;
     }
 }
