@@ -11,7 +11,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public void onEnable() {
         getLogger().info("✅ ConsoleBot включен!");
 
-        // Загружаем конфиг
         saveDefaultConfig();
         String token = getConfig().getString("telegram-token");
         if (token == null || token.isEmpty()) {
@@ -22,7 +21,6 @@ public class TelegramConsoleBot extends JavaPlugin {
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            // Передаём ссылку на плагин в бота
             botsApi.registerBot(new TelegramBotHandler(token, this));
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
