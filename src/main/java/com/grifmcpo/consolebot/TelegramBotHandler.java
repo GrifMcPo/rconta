@@ -1,6 +1,7 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -8,6 +9,8 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+
+import java.util.Arrays;
 
 public class TelegramBotHandler extends TelegramLongPollingBot {
 
@@ -104,25 +107,162 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ---
-            String customSenderName = plugin.getCustomSender(userId);
-            if (customSenderName == null && userId == plugin.getOwnerId()) {
-                customSenderName = "RCON@Grif_Mo";
+            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ОТПРАВИТЕЛЯ ---
+            // Всегда используем "RCON" как имя отправителя для PunisherX
+            String senderName = "RCON";
+
+            // Получаем кастомное имя для сообщения от бота
+            String customSender = plugin.getCustomSender(userId);
+            if (customSender == null && userId == plugin.getOwnerId()) {
+                customSender = "RCON@Grif_Mo";
             }
 
             final String finalCommand = command;
-            final String finalSenderName = customSenderName;
+            final String finalSenderName = senderName;
+            final String finalCustomSender = customSender;
 
             sendMessage(chatId, "✅ Команда выполняется от имени " + finalSenderName + ": " + command);
 
-            // Выполняем команду от кастомного отправителя (упрощенный способ)
+            // Выполняем команду от кастомного отправителя "RCON"
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Используем консоль как основу, но в плагине наказаний будет виден customSenderName
-                // Так как CommandSender нельзя просто подменить, выполняем от консоли
-                // и надеемся, что плагин наказаний использует плейсхолдеры
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
+                // Создаём кастомного отправителя
+                CommandSender customCommandSender = new CommandSender() {
+                    @Override
+                    public void sendMessage(String message) {
+                        Bukkit.getConsoleSender().sendMessage(message);
+                    }
+
+                    @Override
+                    public void sendMessage(String[] messages) {
+                        Bukkit.getConsoleSender().sendMessage(messages);
+                    }
+
+                    @Override
+                    public String getName() {
+                        return finalSenderName;
+                    }
+
+                    @Override
+                    public boolean isPermissionSet(String name) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean hasPermission(String name) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean hasPermission(Permission perm) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean isOp() {
+                        return true;
+                    }
+
+                    @Override
+                    public void setOp(boolean value) {}
+
+                    @Override
+                    public Spigot spigot() {
+                        return Bukkit.getConsoleSender().spigot();
+                    }
+                };
+
+                boolean success = Bukkit.dispatchCommand(customCommandSender, finalCommand);
+                if (!success) {
+                    plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
+                }
+
+                // --- ОТПРАВЛЯЕМ КАСТОМНОЕ СООБЩЕНИЕ В ЧАТ (после выполнения команды) ---
+                sendCustomMessage(finalCommand, finalCustomSender);
             });
         }
+    }
+
+    private void sendCustomMessage(String command, String sender) {
+        String[] parts = command.split(" ");
+        if (parts.length < 2) {
+            return;
+        }
+
+        String action = parts[0].toLowerCase();
+        String playerName = parts[1];
+        String time = "";
+        String reason = "";
+
+        // Определяем время и причину
+        if (action.equals("ban") || action.equals("mute") || action.equals("warn") || action.equals("jail")) {
+            if (parts.length >= 3) {
+                String possibleTime = parts[2];
+                if (possibleTime.matches("\\d+[smhdwMy]")) {
+                    time = possibleTime;
+                    if (parts.length > 3) {
+                        reason = String.join(" ", Arrays.copyOfRange(parts, 3, parts.length));
+                    } else {
+                        reason = "Без причины";
+                    }
+                } else {
+                    time = "перманентно";
+                    reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+                }
+            } else {
+                time = "перманентно";
+                reason = "Без причины";
+            }
+        } else if (action.equals("kick")) {
+            if (parts.length > 2) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+        } else {
+            return;
+        }
+
+        // Форматируем сообщение
+        String actionName = "";
+        String color = "";
+        switch (action) {
+            case "ban":
+                actionName = "забанил";
+                color = "§c";
+                break;
+            case "mute":
+                actionName = "замутил";
+                color = "§e";
+                break;
+            case "kick":
+                actionName = "выгнал";
+                color = "§6";
+                break;
+            case "warn":
+                actionName = "выдал предупреждение";
+                color = "§5";
+                break;
+            case "jail":
+                actionName = "посадил в тюрьму";
+                color = "§8";
+                break;
+            default:
+                return;
+        }
+
+        // Собираем финальное сообщение
+        String message = color + "✦ " + sender + " §f" + actionName + " игрока §a" + playerName;
+
+        if (!action.equals("kick")) {
+            message += " §fна срок §b" + time;
+        }
+
+        if (!reason.isEmpty()) {
+            message += " §fпо причине: §6" + reason;
+        }
+
+        // Отправляем в чат
+        Bukkit.broadcastMessage(message);
     }
 
     private void sendMessage(long chatId, String text) {
