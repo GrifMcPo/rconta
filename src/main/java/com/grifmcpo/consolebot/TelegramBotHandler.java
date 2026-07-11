@@ -1,48 +1,62 @@
-package com.grifmcpo.consolebot;
+// ... внутри onUpdateReceived, после проверки на !rcon добавляем:
 
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-
-import java.util.ArrayList;
-import java.util.List;
-
-public class TelegramAuthHandler {
-
-    private final PlayerManager playerManager;
-
-    public TelegramAuthHandler(PlayerManager playerManager) {
-        this.playerManager = playerManager;
+// --- КОМАНДЫ ДЛЯ ИГРОКОВ ---
+if (messageText.startsWith("/register ")) {
+    String code = messageText.substring(10).trim();
+    if (playerManager.registerPlayer(code, String.valueOf(userId))) {
+        sendMessage(chatId, "✅ Аккаунт успешно привязан!");
+    } else {
+        sendMessage(chatId, "❌ Неверный код или код уже использован.");
     }
+    return;
+}
 
-    public SendMessage getAuthButtons(String playerName, String code) {
-        SendMessage message = new SendMessage();
-        message.setChatId(playerManager.getTelegramId(playerName));
-        message.setText("🔐 **Подтверждение входа**\n\n" +
-                "Игрок **" + playerName + "** пытается войти на сервер.\n" +
-                "Разрешить вход?");
-
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        InlineKeyboardButton allowBtn = new InlineKeyboardButton();
-        allowBtn.setText("✅ Разрешить");
-        allowBtn.setCallbackData("auth_allow_" + playerName);
-
-        InlineKeyboardButton denyBtn = new InlineKeyboardButton();
-        denyBtn.setText("❌ Запроетить");
-        denyBtn.setCallbackData("auth_deny_" + playerName);
-
-        rows.add(List.of(allowBtn, denyBtn));
-        markup.setKeyboard(rows);
-        message.setReplyMarkup(markup);
-        return message;
+if (messageText.equalsIgnoreCase("/kick my account")) {
+    // Найти игрока по Telegram ID
+    String playerName = playerManager.getPlayerNameByTelegram(String.valueOf(userId));
+    if (playerName != null) {
+        playerManager.kickAccount(playerName);
+        sendMessage(chatId, "✅ Игрок " + playerName + " был кикнут.");
+    } else {
+        sendMessage(chatId, "❌ Вы не привязали аккаунт.");
     }
+    return;
+}
 
-    public String getRegisterMessage(String code) {
-        return "🔑 **Код для привязки аккаунта:**\n" +
-                "`" + code + "`\n\n" +
-                "Отправьте этот код боту командой:\n" +
-                "`/register " + code + "`";
+if (messageText.equalsIgnoreCase("/unreg")) {
+    String playerName = playerManager.getPlayerNameByTelegram(String.valueOf(userId));
+    if (playerName != null) {
+        playerManager.unregister(playerName);
+        sendMessage(chatId, "✅ Аккаунт " + playerName + " отвязан.");
+    } else {
+        sendMessage(chatId, "❌ Вы не привязали аккаунт.");
     }
+    return;
+}
+
+// --- ОБРАБОТКА КНОПОК (для 2FA) ---
+if (update.hasCallbackQuery()) {
+    String data = update.getCallbackQuery().getData();
+    String chatId = update.getCallbackQuery().getMessage().getChatId().toString();
+    if (data.startsWith("auth_allow_")) {
+        String playerName = data.substring(11);
+        playerManager.refreshSession(playerName);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            Player player = Bukkit.getPlayerExact(playerName);
+            if (player != null && player.isOnline()) {
+                player.sendMessage("§aВход разрешён через Telegram!");
+            }
+        });
+        sendMessage(Long.parseLong(chatId), "✅ Вход для " + playerName + " разрешён.");
+    } else if (data.startsWith("auth_deny_")) {
+        String playerName = data.substring(10);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            Player player = Bukkit.getPlayerExact(playerName);
+            if (player != null && player.isOnline()) {
+                player.kickPlayer("§cВход запрещён через Telegram!");
+            }
+        });
+        sendMessage(Long.parseLong(chatId), "❌ Вход для " + playerName + " запрещён.");
+    }
+    return;
 }
