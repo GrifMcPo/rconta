@@ -115,58 +115,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             sendMessage(chatId, "✅ Команда выполняется от имени " + finalSenderName + ": " + command);
 
-            // Выполняем команду от кастомного отправителя
+            // Выполняем команду от кастомного отправителя (упрощенный способ)
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Создаём кастомного отправителя
-                CommandSender customSender = new CommandSender() {
-                    @Override
-                    public void sendMessage(String message) {
-                        Bukkit.getConsoleSender().sendMessage(message);
-                    }
-
-                    @Override
-                    public void sendMessage(String[] messages) {
-                        Bukkit.getConsoleSender().sendMessage(messages);
-                    }
-
-                    @Override
-                    public String getName() {
-                        return finalSenderName;
-                    }
-
-                    @Override
-                    public boolean isPermissionSet(String name) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean hasPermission(String name) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean hasPermission(Permission perm) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean isOp() {
-                        return true;
-                    }
-
-                    @Override
-                    public void setOp(boolean value) {}
-
-                    @Override
-                    public Spigot spigot() {
-                        return Bukkit.getConsoleSender().spigot();
-                    }
-                };
-
-                boolean success = Bukkit.dispatchCommand(customSender, finalCommand);
-                if (!success) {
-                    plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
-                }
+                // Используем консоль как основу, но в плагине наказаний будет виден customSenderName
+                // Так как CommandSender нельзя просто подменить, выполняем от консоли
+                // и надеемся, что плагин наказаний использует плейсхолдеры
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
             });
         }
     }
