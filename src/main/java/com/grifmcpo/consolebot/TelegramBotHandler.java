@@ -1,7 +1,6 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -108,7 +107,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
 
             // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ОТПРАВИТЕЛЯ ---
-            // Всегда используем "RCON" как имя отправителя для PunisherX
+            // Всегда используем "RCON" как имя отправителя для плагина наказаний
             String senderName = "RCON";
 
             // Получаем кастомное имя для сообщения от бота
@@ -126,51 +125,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             // Выполняем команду от кастомного отправителя "RCON"
             Bukkit.getScheduler().runTask(plugin, () -> {
                 // Создаём кастомного отправителя
-                CommandSender customCommandSender = new CommandSender() {
-                    @Override
-                    public void sendMessage(String message) {
-                        Bukkit.getConsoleSender().sendMessage(message);
-                    }
-
-                    @Override
-                    public void sendMessage(String[] messages) {
-                        Bukkit.getConsoleSender().sendMessage(messages);
-                    }
-
-                    @Override
-                    public String getName() {
-                        return finalSenderName;
-                    }
-
-                    @Override
-                    public boolean isPermissionSet(String name) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean hasPermission(String name) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean hasPermission(Permission perm) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean isOp() {
-                        return true;
-                    }
-
-                    @Override
-                    public void setOp(boolean value) {}
-
-                    @Override
-                    public Spigot spigot() {
-                        return Bukkit.getConsoleSender().spigot();
-                    }
-                };
-
+                CommandSender customCommandSender = new CustomCommandSender(finalSenderName);
                 boolean success = Bukkit.dispatchCommand(customCommandSender, finalCommand);
                 if (!success) {
                     plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
@@ -179,6 +134,60 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 // --- ОТПРАВЛЯЕМ КАСТОМНОЕ СООБЩЕНИЕ В ЧАТ (после выполнения команды) ---
                 sendCustomMessage(finalCommand, finalCustomSender);
             });
+        }
+    }
+
+    /**
+     * Внутренний класс для кастомного отправителя команд.
+     */
+    private static class CustomCommandSender implements CommandSender {
+        private final String name;
+
+        public CustomCommandSender(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public void sendMessage(String message) {
+            Bukkit.getConsoleSender().sendMessage(message);
+        }
+
+        @Override
+        public void sendMessage(String[] messages) {
+            Bukkit.getConsoleSender().sendMessage(messages);
+        }
+
+        @Override
+        public boolean isPermissionSet(String name) {
+            return true;
+        }
+
+        @Override
+        public boolean hasPermission(String name) {
+            return true;
+        }
+
+        @Override
+        public boolean hasPermission(Permission perm) {
+            return true;
+        }
+
+        @Override
+        public boolean isOp() {
+            return true;
+        }
+
+        @Override
+        public void setOp(boolean value) {}
+
+        @Override
+        public Spigot spigot() {
+            return Bukkit.getConsoleSender().spigot();
         }
     }
 
