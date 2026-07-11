@@ -299,8 +299,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String version = Bukkit.getVersion();
         String msg = "🖥️ **Информация о сервере:**\n\n" +
                 "📌 Версия: " + version + "\n" +
-                "👥 Игроки: " + online + "/" + max + "\n" +
-                "🕐 Время работы: " + (Bukkit.getUptime() / 3600000) + " ч";
+                "👥 Игроки: " + online + "/" + max;
         sendMessage(chatId, msg);
     }
 
