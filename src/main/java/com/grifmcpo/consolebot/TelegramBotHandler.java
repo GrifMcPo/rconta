@@ -1,8 +1,6 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
-import org.bukkit.command.CommandSender;
-import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -106,88 +104,23 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ОТПРАВИТЕЛЯ ---
-            // Всегда используем "RCON" как имя отправителя для плагина наказаний
-            String senderName = "RCON";
-
-            // Получаем кастомное имя для сообщения от бота
+            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ СООБЩЕНИЯ ОТ БОТА ---
             String customSender = plugin.getCustomSender(userId);
             if (customSender == null && userId == plugin.getOwnerId()) {
                 customSender = "RCON@Grif_Mo";
             }
 
             final String finalCommand = command;
-            final String finalSenderName = senderName;
             final String finalCustomSender = customSender;
 
-            sendMessage(chatId, "✅ Команда выполняется от имени " + finalSenderName + ": " + command);
+            sendMessage(chatId, "✅ Команда выполняется: " + command);
 
-            // Выполняем команду от кастомного отправителя "RCON"
+            // Выполняем команду от консоли
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Создаём кастомного отправителя
-                CommandSender customCommandSender = new CustomCommandSender(finalSenderName);
-                boolean success = Bukkit.dispatchCommand(customCommandSender, finalCommand);
-                if (!success) {
-                    plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
-                }
-
-                // --- ОТПРАВЛЯЕМ КАСТОМНОЕ СООБЩЕНИЕ В ЧАТ (после выполнения команды) ---
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
+                // Отправляем кастомное сообщение в чат
                 sendCustomMessage(finalCommand, finalCustomSender);
             });
-        }
-    }
-
-    /**
-     * Внутренний класс для кастомного отправителя команд.
-     */
-    private static class CustomCommandSender implements CommandSender {
-        private final String name;
-
-        public CustomCommandSender(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public void sendMessage(String message) {
-            Bukkit.getConsoleSender().sendMessage(message);
-        }
-
-        @Override
-        public void sendMessage(String[] messages) {
-            Bukkit.getConsoleSender().sendMessage(messages);
-        }
-
-        @Override
-        public boolean isPermissionSet(String name) {
-            return true;
-        }
-
-        @Override
-        public boolean hasPermission(String name) {
-            return true;
-        }
-
-        @Override
-        public boolean hasPermission(Permission perm) {
-            return true;
-        }
-
-        @Override
-        public boolean isOp() {
-            return true;
-        }
-
-        @Override
-        public void setOp(boolean value) {}
-
-        @Override
-        public Spigot spigot() {
-            return Bukkit.getConsoleSender().spigot();
         }
     }
 
@@ -259,7 +192,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
         }
 
-        // Собираем финальное сообщение
+        // Собираем финальное сообщение с красивым форматированием
         String message = color + "✦ " + sender + " §f" + actionName + " игрока §a" + playerName;
 
         if (!action.equals("kick")) {
@@ -270,7 +203,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             message += " §fпо причине: §6" + reason;
         }
 
-        // Отправляем в чат
+        // Добавляем разделитель для красоты
+        message = "§8§m----------------------------§r\n" + message + "\n§8§m----------------------------§r";
+
         Bukkit.broadcastMessage(message);
     }
 
