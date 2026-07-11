@@ -14,7 +14,7 @@ import java.util.Map;
 public class TelegramConsoleBot extends JavaPlugin {
 
     private Map<String, String> admins = new HashMap<>();
-    private long ownerId = 8308522569L; // ТВОЙ TELEGRAM ID
+    private long ownerId = 8889631346L; // ТВОЙ TELEGRAM ID (овнер)
     private File adminsFile;
     private FileConfiguration adminsConfig;
 
