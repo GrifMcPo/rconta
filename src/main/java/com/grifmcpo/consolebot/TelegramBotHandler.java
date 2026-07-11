@@ -10,9 +10,9 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 public class TelegramBotHandler extends TelegramLongPollingBot {
 
     private final String botToken;
-    private final JavaPlugin plugin;
+    private final TelegramConsoleBot plugin;
 
-    public TelegramBotHandler(String token, JavaPlugin plugin) {
+    public TelegramBotHandler(String token, TelegramConsoleBot plugin) {
         this.botToken = token;
         this.plugin = plugin;
     }
@@ -32,23 +32,96 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()) {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
+            long userId = update.getMessage().getFrom().getId();
 
-            if (messageText.startsWith("/rcon ")) {
-                String command = messageText.substring(6).trim();
-                if (command.isEmpty()) {
-                    sendMessage(chatId, "❌ Введите команду после /rcon");
+            // Проверяем, что команда начинается с !rcon
+            if (!messageText.startsWith("!rcon")) {
+                return;
+            }
+
+            // Убираем "!rcon " из команды
+            String command = messageText.substring(6).trim();
+            if (command.isEmpty()) {
+                sendMessage(chatId, "ℹ️ Введите команду после !rcon");
+                return;
+            }
+
+            // --- ОБРАБОТКА АДМИН-КОМАНД ---
+            if (command.startsWith("admin ")) {
+                String[] parts = command.split(" ");
+                if (parts.length < 3) {
+                    sendMessage(chatId, "❌ Используйте: !rcon admin add <айди> <ник>  или  !rcon admin remove <айди>");
                     return;
                 }
 
-                sendMessage(chatId, "✅ Команда выполняется: " + command);
+                // Проверяем, что команду отправил ОВНЕР (только ты)
+                if (userId != plugin.getOwnerId()) {
+                    sendMessage(chatId, "⛔ Только владелец может управлять админами!");
+                    return;
+                }
 
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                });
+                String action = parts[1];
+                String adminId = parts[2];
 
-            } else {
-                sendMessage(chatId, "ℹ️ Используйте /rcon <команда>");
+                if (action.equalsIgnoreCase("add")) {
+                    if (parts.length < 4) {
+                        sendMessage(chatId, "❌ Укажите ник игрока: !rcon admin add <айди> <ник>");
+                        return;
+                    }
+                    String playerName = parts[3];
+                    plugin.addAdmin(adminId, playerName);
+                    sendMessage(chatId, "✅ Админ " + playerName + " (ID: " + adminId + ") добавлен!");
+                } else if (action.equalsIgnoreCase("remove")) {
+                    if (!plugin.getAdmins().containsKey(adminId)) {
+                        sendMessage(chatId, "❌ Админ с ID " + adminId + " не найден.");
+                        return;
+                    }
+                    plugin.removeAdmin(adminId);
+                    sendMessage(chatId, "✅ Админ с ID " + adminId + " удалён.");
+                } else {
+                    sendMessage(chatId, "❌ Неизвестное действие. Используйте add или remove.");
+                }
+                return;
             }
+
+            // --- ОБРАБОТКА КОМАНДЫ LIST (список админов) ---
+            if (command.equalsIgnoreCase("admin list")) {
+                if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                    sendMessage(chatId, "⛔ У вас нет прав.");
+                    return;
+                }
+                StringBuilder list = new StringBuilder("📋 Список администраторов:\n");
+                for (String id : plugin.getAdmins().keySet()) {
+                    list.append("• ").append(id).append(" → ").append(plugin.getAdmins().get(id)).append("\n");
+                }
+                sendMessage(chatId, list.toString());
+                return;
+            }
+
+            // --- ПРОВЕРКА ПРАВ (только админы могут выполнять команды) ---
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
+                return;
+            }
+
+            // --- ВЫПОЛНЕНИЕ ОСНОВНОЙ КОМАНДЫ ---
+            // Получаем ник игрока для подмены отправителя
+            String playerName = plugin.getPlayerName(userId);
+            if (playerName == null && userId == plugin.getOwnerId()) {
+                playerName = "pley1657"; // твой ник, если владелец
+            }
+
+            // Отправляем подтверждение
+            sendMessage(chatId, "✅ Команда выполняется от имени " + playerName + ": " + command);
+
+            // Выполняем команду от имени игрока (через sudo)
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (playerName != null && !playerName.isEmpty()) {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "sudo " + playerName + " " + command);
+                } else {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                }
+            });
         }
     }
 
