@@ -12,7 +12,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final String botToken;
     private final JavaPlugin plugin;
 
-    // Конструктор для передачи токена и ссылки на плагин
     public TelegramBotHandler(String token, JavaPlugin plugin) {
         this.botToken = token;
         this.plugin = plugin;
@@ -30,12 +29,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // Проверяем, что это текстовое сообщение
         if (update.hasMessage() && update.getMessage().hasText()) {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            // Обработка команды /rcon
             if (messageText.startsWith("/rcon ")) {
                 String command = messageText.substring(6).trim();
                 if (command.isEmpty()) {
@@ -43,15 +40,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     return;
                 }
 
-                // Отправляем подтверждение в Telegram до выполнения команды
                 sendMessage(chatId, "✅ Команда выполняется: " + command);
 
-                // Выполняем команду в главном потоке сервера (синхронно)
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    boolean success = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                    if (!success) {
-                        sendMessage(chatId, "❌ Команда не выполнена или не найдена.");
-                    }
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
                 });
 
             } else {
@@ -60,7 +52,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
     }
 
-    // Метод для отправки сообщения в Telegram
     private void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
