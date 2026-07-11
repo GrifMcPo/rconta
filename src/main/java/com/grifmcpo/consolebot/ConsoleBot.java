@@ -1,12 +1,11 @@
 package com.grifmcpo.consolebot;
 
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
-public class ConsoleBot extends JavaPlugin {
+public class TelegramConsoleBot extends JavaPlugin {
 
     @Override
     public void onEnable() {
@@ -14,8 +13,6 @@ public class ConsoleBot extends JavaPlugin {
 
         // Загружаем конфиг
         saveDefaultConfig();
-
-        // Получаем токен из конфига
         String token = getConfig().getString("telegram-token");
         if (token == null || token.isEmpty()) {
             getLogger().severe("❌ Токен не найден в config.yml!");
@@ -23,10 +20,10 @@ public class ConsoleBot extends JavaPlugin {
             return;
         }
 
-        // Регистрируем бота
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new ConsoleBotHandler(token));
+            // Передаём ссылку на плагин в бота
+            botsApi.registerBot(new TelegramBotHandler(token, this));
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
