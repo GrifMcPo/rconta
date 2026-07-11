@@ -28,7 +28,11 @@ public class PlayerManager {
     private void loadAuthData() {
         authFile = new File(plugin.getDataFolder(), "auth.yml");
         if (!authFile.exists()) {
-            plugin.saveResource("auth.yml", false);
+            try {
+                authFile.createNewFile();
+            } catch (Exception e) {
+                plugin.getLogger().severe("❌ Не удалось создать auth.yml: " + e.getMessage());
+            }
         }
         authConfig = YamlConfiguration.loadConfiguration(authFile);
     }
@@ -64,7 +68,15 @@ public class PlayerManager {
         String playerName = pendingCodes.remove(code);
         codeTimestamps.remove(code);
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
-        if (uuid == null) return false;
+        if (uuid == null) {
+            // Если игрок оффлайн, пробуем найти его по имени через Bukkit
+            Player player = Bukkit.getPlayerExact(playerName);
+            if (player != null) {
+                uuid = player.getUniqueId();
+            } else {
+                return false;
+            }
+        }
 
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
@@ -88,10 +100,12 @@ public class PlayerManager {
         return authConfig.getString(playerName + ".telegramId");
     }
 
-    // ========== ВОТ ЭТОТ МЕТОД БЫЛ ПРОПУЩЕН ==========
+    // ========== МЕТОД ДЛЯ ПОЛУЧЕНИЯ ИГРОКА ПО TELEGRAM ID ==========
     public String getPlayerNameByTelegram(String telegramId) {
+        if (telegramId == null) return null;
         for (String key : authConfig.getKeys(false)) {
-            if (authConfig.getString(key + ".telegramId", "").equals(telegramId)) {
+            String id = authConfig.getString(key + ".telegramId");
+            if (id != null && id.equals(telegramId)) {
                 return key;
             }
         }
@@ -120,12 +134,18 @@ public class PlayerManager {
 
     private String getPlayerIP(String playerName) {
         Player player = Bukkit.getPlayerExact(playerName);
-        return player != null ? player.getAddress().getHostString() : "0.0.0.0";
+        if (player != null && player.getAddress() != null) {
+            return player.getAddress().getHostString();
+        }
+        return "0.0.0.0";
     }
 
     public void unregister(String playerName) {
         authConfig.set(playerName, null);
-        playerSessions.entrySet().removeIf(entry -> entry.getValue().equals(playerName));
+        playerSessions.entrySet().removeIf(entry -> {
+            String name = getPlayerNameByTelegram(entry.getValue());
+            return name != null && name.equals(playerName);
+        });
         saveAuthData();
     }
 
