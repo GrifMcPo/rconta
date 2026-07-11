@@ -16,8 +16,9 @@ public class PlayerManager {
     private final JavaPlugin plugin;
     private File authFile;
     private FileConfiguration authConfig;
-    private final Map<String, String> pendingCodes = new HashMap<>(); // код -> игрок
-    private final Map<UUID, String> playerSessions = new HashMap<>(); // UUID -> TelegramID
+    private final Map<String, String> pendingCodes = new HashMap<>();
+    private final Map<UUID, String> playerSessions = new HashMap<>();
+    private final Map<String, Long> codeTimestamps = new HashMap<>();
 
     public PlayerManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -40,24 +41,31 @@ public class PlayerManager {
         }
     }
 
-    // Генерация кода для привязки
     public String generateCode(String playerName) {
         String code = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         pendingCodes.put(code, playerName);
+        codeTimestamps.put(code, System.currentTimeMillis());
         plugin.getLogger().info("📝 Код для " + playerName + ": " + code);
         return code;
     }
 
-    // Привязка аккаунта
     public boolean registerPlayer(String code, String telegramId) {
         if (!pendingCodes.containsKey(code)) {
             return false;
         }
+
+        Long timestamp = codeTimestamps.get(code);
+        if (timestamp == null || (System.currentTimeMillis() - timestamp) > 5 * 60 * 1000) {
+            pendingCodes.remove(code);
+            codeTimestamps.remove(code);
+            return false;
+        }
+
         String playerName = pendingCodes.remove(code);
+        codeTimestamps.remove(code);
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
         if (uuid == null) return false;
 
-        // Сохраняем данные
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
         authConfig.set(playerName + ".ip", getPlayerIP(playerName));
@@ -68,7 +76,6 @@ public class PlayerManager {
         return true;
     }
 
-    // Проверка, зарегистрирован ли игрок
     public boolean isRegistered(String playerName) {
         return authConfig.getBoolean(playerName + ".registered", false);
     }
@@ -77,24 +84,30 @@ public class PlayerManager {
         return playerSessions.containsKey(uuid);
     }
 
-    // Получение Telegram ID по нику
     public String getTelegramId(String playerName) {
         return authConfig.getString(playerName + ".telegramId");
     }
 
-    // Проверка сессии (12 часов)
+    // ========== ВОТ ЭТОТ МЕТОД БЫЛ ПРОПУЩЕН ==========
+    public String getPlayerNameByTelegram(String telegramId) {
+        for (String key : authConfig.getKeys(false)) {
+            if (authConfig.getString(key + ".telegramId", "").equals(telegramId)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
     public boolean isSessionValid(String playerName) {
         long sessionTime = authConfig.getLong(playerName + ".sessionTime", 0);
         return (System.currentTimeMillis() - sessionTime) < 12 * 60 * 60 * 1000;
     }
 
-    // Обновление сессии
     public void refreshSession(String playerName) {
         authConfig.set(playerName + ".sessionTime", System.currentTimeMillis());
         saveAuthData();
     }
 
-    // Проверка IP
     public boolean isIPMatch(String playerName, String ip) {
         String savedIP = authConfig.getString(playerName + ".ip");
         return savedIP != null && savedIP.equals(ip);
@@ -110,14 +123,12 @@ public class PlayerManager {
         return player != null ? player.getAddress().getHostString() : "0.0.0.0";
     }
 
-    // Отвязка аккаунта
     public void unregister(String playerName) {
         authConfig.set(playerName, null);
         playerSessions.entrySet().removeIf(entry -> entry.getValue().equals(playerName));
         saveAuthData();
     }
 
-    // Кикнуть аккаунт
     public void kickAccount(String playerName) {
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline()) {
