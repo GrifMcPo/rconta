@@ -96,7 +96,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         return admins.containsKey(String.valueOf(telegramId));
     }
 
-    public String getPlayerName(long telegramId) {
+    public String getCustomSender(long telegramId) {
         return admins.get(String.valueOf(telegramId));
     }
 }
