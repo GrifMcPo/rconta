@@ -1,3 +1,4 @@
+
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
