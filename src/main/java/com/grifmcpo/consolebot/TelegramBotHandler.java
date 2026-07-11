@@ -1,6 +1,9 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
+import org.bukkit.permissions.Permission;
+import org.bukkit.Spigot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -40,10 +43,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             plugin.getLogger().info("🆔 От пользователя: " + userId);
             plugin.getLogger().info("📌 Команда начинается с '!rcon'? " + messageText.startsWith("!rcon"));
 
+            // Проверяем, что команда начинается с !rcon
             if (!messageText.startsWith("!rcon")) {
                 return;
             }
 
+            // Убираем "!rcon " из команды
             String command = messageText.substring(6).trim();
             if (command.isEmpty()) {
                 sendMessage(chatId, "ℹ️ Введите команду после !rcon");
@@ -104,52 +109,47 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
 
             // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ЭТОГО ПОЛЬЗОВАТЕЛЯ ---
-            String customSender = plugin.getCustomSender(userId);
-            if (customSender == null && userId == plugin.getOwnerId()) {
-                customSender = "RCON@pley1657"; // Твой кастомный текст для владельца
+            String customSenderName = plugin.getCustomSender(userId);
+            if (customSenderName == null && userId == plugin.getOwnerId()) {
+                customSenderName = "RCON@Grif_Mo";
             }
 
-            // Отправляем подтверждение
-            sendMessage(chatId, "✅ Команда выполняется от имени " + customSender + ": " + command);
-
             final String finalCommand = command;
-            final String finalCustomSender = customSender;
+            final String finalSenderName = customSenderName;
 
-            // Выполняем команду от консоли
+            // Отправляем подтверждение в Telegram
+            sendMessage(chatId, "✅ Команда выполняется от имени " + finalSenderName + ": " + command);
+
+            // Выполняем команду от кастомного отправителя
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Выполняем команду от консоли
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
-
-                // Если команда начинается с "ban " или "kick " — отправляем кастомное сообщение в чат
-                if (finalCommand.startsWith("ban ") || finalCommand.startsWith("kick ")) {
-                    String[] parts = finalCommand.split(" ");
-                    if (parts.length >= 2) {
-                        String playerName = parts[1];
-                        String reason = finalCommand.substring(finalCommand.indexOf(playerName) + playerName.length()).trim();
-                        if (reason.isEmpty()) {
-                            reason = "Без причины";
-                        }
-                        String action = finalCommand.startsWith("ban ") ? "забанен" : "кикнут";
-                        Bukkit.broadcastMessage("§c" + finalCustomSender + " §f" + action + " игрока §e" + playerName + " §fпо причине: §6" + reason);
+                // Создаём кастомного отправителя
+                CommandSender customSender = new CommandSender() {
+                    @Override
+                    public void sendMessage(String message) {}
+                    @Override
+                    public void sendMessage(String[] messages) {}
+                    @Override
+                    public String getName() {
+                        return finalSenderName;
                     }
-                }
+                    @Override
+                    public boolean isPermissionSet(String name) { return true; }
+                    @Override
+                    public boolean hasPermission(String name) { return true; }
+                    @Override
+                    public boolean hasPermission(Permission perm) { return true; }
+                    @Override
+                    public boolean isOp() { return true; }
+                    @Override
+                    public void setOp(boolean value) {}
+                    @Override
+                    public Spigot spigot() { return null; }
+                };
 
-                // Если команда начинается с "mute " — отправляем кастомное сообщение в чат
-                if (finalCommand.startsWith("mute ")) {
-                    String[] parts = finalCommand.split(" ");
-                    if (parts.length >= 2) {
-                        String playerName = parts[1];
-                        String reason = finalCommand.substring(finalCommand.indexOf(playerName) + playerName.length()).trim();
-                        if (reason.isEmpty()) {
-                            reason = "Без причины";
-                        }
-                        Bukkit.broadcastMessage("§c" + finalCustomSender + " §fзамутил игрока §e" + playerName + " §fпо причине: §6" + reason);
-                    }
-                }
-
-                // Если команда "list" — отправляем список игроков в чат
-                if (finalCommand.equalsIgnoreCase("list")) {
-                    // Это уже сделает сама команда, но мы можем добавить кастомное сообщение
+                // Выполняем команду от кастомного отправителя
+                boolean success = Bukkit.dispatchCommand(customSender, finalCommand);
+                if (!success) {
+                    plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
                 }
             });
         }
