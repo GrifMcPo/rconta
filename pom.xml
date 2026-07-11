@@ -27,20 +27,17 @@
     </repositories>
 
     <dependencies>
-        <!-- Paper API (для 1.21.11) -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>1.21.11-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        <!-- Telegram Bot API -->
         <dependency>
             <groupId>org.telegram</groupId>
             <artifactId>telegrambots</artifactId>
             <version>6.9.7.1</version>
         </dependency>
-        <!-- Логирование -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
