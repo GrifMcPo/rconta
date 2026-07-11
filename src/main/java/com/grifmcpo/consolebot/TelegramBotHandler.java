@@ -114,12 +114,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             // Отправляем подтверждение
             sendMessage(chatId, "✅ Команда выполняется от имени " + playerName + ": " + command);
 
+            // FIX: Создаём финальные копии переменных для лямбды
+            final String finalCommand = command;
+            final String finalPlayerName = playerName;
+
             // Выполняем команду от имени игрока (через sudo)
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (playerName != null && !playerName.isEmpty()) {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "sudo " + playerName + " " + command);
+                if (finalPlayerName != null && !finalPlayerName.isEmpty()) {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "sudo " + finalPlayerName + " " + finalCommand);
                 } else {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
                 }
             });
         }
