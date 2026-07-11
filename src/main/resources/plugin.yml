@@ -1,0 +1,6 @@
+name: RCONHandler
+version: 1.0
+main: com.grifmcpo.rconhandler.RCONHandler
+api-version: 1.21
+author: GrifMcPo
+description: Подменяет отправителя RCON-команд на кастомный текст
