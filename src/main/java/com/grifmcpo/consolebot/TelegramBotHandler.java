@@ -117,7 +117,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             // Выполняем команду от кастомного отправителя
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Создаём кастомного отправителя на основе консоли, но с переопределённым именем
+                // Создаём кастомного отправителя
                 CommandSender customSender = new CommandSender() {
                     @Override
                     public void sendMessage(String message) {
