@@ -29,26 +29,21 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // ========== ДИАГНОСТИКА (все сообщения) ==========
         if (update.hasMessage() && update.getMessage().hasText()) {
             String messageText = update.getMessage().getText();
             long userId = update.getMessage().getFrom().getId();
             long chatId = update.getMessage().getChatId();
 
-            // Логируем ВСЕ сообщения в консоль сервера
+            // Логируем все сообщения
             plugin.getLogger().info("🔥🔥🔥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM! 🔥🔥🔥");
             plugin.getLogger().info("📩 Текст: " + messageText);
             plugin.getLogger().info("🆔 От пользователя: " + userId);
             plugin.getLogger().info("📌 Команда начинается с '!rcon'? " + messageText.startsWith("!rcon"));
-            // =============================================
 
-            // Проверяем, что команда начинается с !rcon
             if (!messageText.startsWith("!rcon")) {
-                // Если не !rcon — просто игнорируем, но в логах уже есть запись
                 return;
             }
 
-            // Убираем "!rcon " из команды
             String command = messageText.substring(6).trim();
             if (command.isEmpty()) {
                 sendMessage(chatId, "ℹ️ Введите команду после !rcon");
@@ -59,11 +54,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             if (command.startsWith("admin ")) {
                 String[] parts = command.split(" ");
                 if (parts.length < 3) {
-                    sendMessage(chatId, "❌ Используйте: !rcon admin add <айди> <ник>  или  !rcon admin remove <айди>");
+                    sendMessage(chatId, "❌ Используйте: !rcon admin add <айди> <текст>  или  !rcon admin remove <айди>");
                     return;
                 }
 
-                // Проверяем, что команду отправил ОВНЕР (только ты)
                 if (userId != plugin.getOwnerId()) {
                     sendMessage(chatId, "⛔ Только владелец может управлять админами!");
                     return;
@@ -74,12 +68,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
                 if (action.equalsIgnoreCase("add")) {
                     if (parts.length < 4) {
-                        sendMessage(chatId, "❌ Укажите ник игрока: !rcon admin add <айди> <ник>");
+                        sendMessage(chatId, "❌ Укажите кастомный текст: !rcon admin add <айди> <текст>");
                         return;
                     }
-                    String playerName = parts[3];
-                    plugin.addAdmin(adminId, playerName);
-                    sendMessage(chatId, "✅ Админ " + playerName + " (ID: " + adminId + ") добавлен!");
+                    String customText = parts[3];
+                    plugin.addAdmin(adminId, customText);
+                    sendMessage(chatId, "✅ Админ с ID " + adminId + " добавлен с текстом: " + customText);
                 } else if (action.equalsIgnoreCase("remove")) {
                     if (!plugin.getAdmins().containsKey(adminId)) {
                         sendMessage(chatId, "❌ Админ с ID " + adminId + " не найден.");
@@ -95,11 +89,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             // --- ОБРАБОТКА КОМАНДЫ LIST (список админов) ---
             if (command.equalsIgnoreCase("admin list")) {
-                // Проверка прав ВРЕМЕННО ОТКЛЮЧЕНА
-                // if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                //     sendMessage(chatId, "⛔ У вас нет прав.");
-                //     return;
-                // }
                 StringBuilder list = new StringBuilder("📋 Список администраторов:\n");
                 for (String id : plugin.getAdmins().keySet()) {
                     list.append("• ").append(id).append(" → ").append(plugin.getAdmins().get(id)).append("\n");
@@ -108,31 +97,59 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- ПРОВЕРКА ПРАВ (ВРЕМЕННО ОТКЛЮЧЕНА) ---
-            // if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-            //     sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
-            //     return;
-            // }
+            // --- ПРОВЕРКА ПРАВ (только админы) ---
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
+                return;
+            }
 
-            // --- ВЫПОЛНЕНИЕ ОСНОВНОЙ КОМАНДЫ ---
-            // Получаем ник игрока для подмены отправителя
-            String playerName = plugin.getPlayerName(userId);
-            if (playerName == null && userId == plugin.getOwnerId()) {
-                playerName = "pley1657"; // твой ник, если владелец
+            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ЭТОГО ПОЛЬЗОВАТЕЛЯ ---
+            String customSender = plugin.getCustomSender(userId);
+            if (customSender == null && userId == plugin.getOwnerId()) {
+                customSender = "RCON@pley1657"; // Твой кастомный текст для владельца
             }
 
             // Отправляем подтверждение
-            sendMessage(chatId, "✅ Команда выполняется от имени " + playerName + ": " + command);
+            sendMessage(chatId, "✅ Команда выполняется от имени " + customSender + ": " + command);
 
             final String finalCommand = command;
-            final String finalPlayerName = playerName;
+            final String finalCustomSender = customSender;
 
-            // Выполняем команду от имени игрока (через sudo)
+            // Выполняем команду от консоли
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (finalPlayerName != null && !finalPlayerName.isEmpty()) {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "sudo " + finalPlayerName + " " + finalCommand);
-                } else {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
+                // Выполняем команду от консоли
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
+
+                // Если команда начинается с "ban " или "kick " — отправляем кастомное сообщение в чат
+                if (finalCommand.startsWith("ban ") || finalCommand.startsWith("kick ")) {
+                    String[] parts = finalCommand.split(" ");
+                    if (parts.length >= 2) {
+                        String playerName = parts[1];
+                        String reason = finalCommand.substring(finalCommand.indexOf(playerName) + playerName.length()).trim();
+                        if (reason.isEmpty()) {
+                            reason = "Без причины";
+                        }
+                        String action = finalCommand.startsWith("ban ") ? "забанен" : "кикнут";
+                        Bukkit.broadcastMessage("§c" + finalCustomSender + " §f" + action + " игрока §e" + playerName + " §fпо причине: §6" + reason);
+                    }
+                }
+
+                // Если команда начинается с "mute " — отправляем кастомное сообщение в чат
+                if (finalCommand.startsWith("mute ")) {
+                    String[] parts = finalCommand.split(" ");
+                    if (parts.length >= 2) {
+                        String playerName = parts[1];
+                        String reason = finalCommand.substring(finalCommand.indexOf(playerName) + playerName.length()).trim();
+                        if (reason.isEmpty()) {
+                            reason = "Без причины";
+                        }
+                        Bukkit.broadcastMessage("§c" + finalCustomSender + " §fзамутил игрока §e" + playerName + " §fпо причине: §6" + reason);
+                    }
+                }
+
+                // Если команда "list" — отправляем список игроков в чат
+                if (finalCommand.equalsIgnoreCase("list")) {
+                    // Это уже сделает сама команда, но мы можем добавить кастомное сообщение
                 }
             });
         }
