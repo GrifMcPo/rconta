@@ -29,13 +29,22 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
+        // ========== ДИАГНОСТИКА (все сообщения) ==========
         if (update.hasMessage() && update.getMessage().hasText()) {
             String messageText = update.getMessage().getText();
-            long chatId = update.getMessage().getChatId();
             long userId = update.getMessage().getFrom().getId();
+            long chatId = update.getMessage().getChatId();
+
+            // Логируем ВСЕ сообщения в консоль сервера
+            plugin.getLogger().info("🔥🔥🔥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM! 🔥🔥🔥");
+            plugin.getLogger().info("📩 Текст: " + messageText);
+            plugin.getLogger().info("🆔 От пользователя: " + userId);
+            plugin.getLogger().info("📌 Команда начинается с '!rcon'? " + messageText.startsWith("!rcon"));
+            // =============================================
 
             // Проверяем, что команда начинается с !rcon
             if (!messageText.startsWith("!rcon")) {
+                // Если не !rcon — просто игнорируем, но в логах уже есть запись
                 return;
             }
 
@@ -86,10 +95,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             // --- ОБРАБОТКА КОМАНДЫ LIST (список админов) ---
             if (command.equalsIgnoreCase("admin list")) {
-                if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                    sendMessage(chatId, "⛔ У вас нет прав.");
-                    return;
-                }
+                // Проверка прав ВРЕМЕННО ОТКЛЮЧЕНА
+                // if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                //     sendMessage(chatId, "⛔ У вас нет прав.");
+                //     return;
+                // }
                 StringBuilder list = new StringBuilder("📋 Список администраторов:\n");
                 for (String id : plugin.getAdmins().keySet()) {
                     list.append("• ").append(id).append(" → ").append(plugin.getAdmins().get(id)).append("\n");
@@ -98,11 +108,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- ПРОВЕРКА ПРАВ (только админы могут выполнять команды) ---
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
-                return;
-            }
+            // --- ПРОВЕРКА ПРАВ (ВРЕМЕННО ОТКЛЮЧЕНА) ---
+            // if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+            //     sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
+            //     return;
+            // }
 
             // --- ВЫПОЛНЕНИЕ ОСНОВНОЙ КОМАНДЫ ---
             // Получаем ник игрока для подмены отправителя
@@ -114,7 +124,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             // Отправляем подтверждение
             sendMessage(chatId, "✅ Команда выполняется от имени " + playerName + ": " + command);
 
-            // FIX: Создаём финальные копии переменных для лямбды
             final String finalCommand = command;
             final String finalPlayerName = playerName;
 
