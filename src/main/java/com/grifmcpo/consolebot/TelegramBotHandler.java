@@ -3,7 +3,6 @@ package com.grifmcpo.consolebot;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.permissions.Permission;
-import org.bukkit.Spigot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -37,18 +36,15 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             long userId = update.getMessage().getFrom().getId();
             long chatId = update.getMessage().getChatId();
 
-            // Логируем все сообщения
             plugin.getLogger().info("🔥🔥🔥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM! 🔥🔥🔥");
             plugin.getLogger().info("📩 Текст: " + messageText);
             plugin.getLogger().info("🆔 От пользователя: " + userId);
             plugin.getLogger().info("📌 Команда начинается с '!rcon'? " + messageText.startsWith("!rcon"));
 
-            // Проверяем, что команда начинается с !rcon
             if (!messageText.startsWith("!rcon")) {
                 return;
             }
 
-            // Убираем "!rcon " из команды
             String command = messageText.substring(6).trim();
             if (command.isEmpty()) {
                 sendMessage(chatId, "ℹ️ Введите команду после !rcon");
@@ -108,7 +104,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ДЛЯ ЭТОГО ПОЛЬЗОВАТЕЛЯ ---
+            // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ---
             String customSenderName = plugin.getCustomSender(userId);
             if (customSenderName == null && userId == plugin.getOwnerId()) {
                 customSenderName = "RCON@Grif_Mo";
@@ -117,36 +113,56 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             final String finalCommand = command;
             final String finalSenderName = customSenderName;
 
-            // Отправляем подтверждение в Telegram
             sendMessage(chatId, "✅ Команда выполняется от имени " + finalSenderName + ": " + command);
 
             // Выполняем команду от кастомного отправителя
             Bukkit.getScheduler().runTask(plugin, () -> {
-                // Создаём кастомного отправителя
+                // Создаём кастомного отправителя на основе консоли, но с переопределённым именем
                 CommandSender customSender = new CommandSender() {
                     @Override
-                    public void sendMessage(String message) {}
+                    public void sendMessage(String message) {
+                        Bukkit.getConsoleSender().sendMessage(message);
+                    }
+
                     @Override
-                    public void sendMessage(String[] messages) {}
+                    public void sendMessage(String[] messages) {
+                        Bukkit.getConsoleSender().sendMessage(messages);
+                    }
+
                     @Override
                     public String getName() {
                         return finalSenderName;
                     }
+
                     @Override
-                    public boolean isPermissionSet(String name) { return true; }
+                    public boolean isPermissionSet(String name) {
+                        return true;
+                    }
+
                     @Override
-                    public boolean hasPermission(String name) { return true; }
+                    public boolean hasPermission(String name) {
+                        return true;
+                    }
+
                     @Override
-                    public boolean hasPermission(Permission perm) { return true; }
+                    public boolean hasPermission(Permission perm) {
+                        return true;
+                    }
+
                     @Override
-                    public boolean isOp() { return true; }
+                    public boolean isOp() {
+                        return true;
+                    }
+
                     @Override
                     public void setOp(boolean value) {}
+
                     @Override
-                    public Spigot spigot() { return null; }
+                    public Spigot spigot() {
+                        return Bukkit.getConsoleSender().spigot();
+                    }
                 };
 
-                // Выполняем команду от кастомного отправителя
                 boolean success = Bukkit.dispatchCommand(customSender, finalCommand);
                 if (!success) {
                     plugin.getLogger().warning("❌ Команда не выполнена: " + finalCommand);
