@@ -10,7 +10,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class TelegramBotHandler extends TelegramLongPollingBot {
@@ -189,26 +188,19 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- ВЫПОЛНЕНИЕ КОМАНДЫ С ПОЛУЧЕНИЕМ ОТВЕТА ---
-        String customSender = plugin.getCustomSender(userId);
-        if (customSender == null && userId == plugin.getOwnerId()) {
-            customSender = "RCON";
-        }
-
+        // --- ВЫПОЛНЕНИЕ КОМАНДЫ С ОТВЕТОМ ---
         final String finalCommand = command;
-        final String finalCustomSender = customSender;
 
-        // Отправляем сообщение о выполнении
         sendMessage(chatId, "⏳ Выполняю: " + command);
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            // Получаем ответ от сервера
-            String response = commandExecutor.executeCommand(finalCommand, finalCustomSender);
+            String response = commandExecutor.executeCommand(finalCommand, "RCON");
             
-            // Форматируем ответ
-            String formattedResponse = commandExecutor.formatResponse(finalCommand, response);
+            // Обрезаем, если слишком длинное
+            if (response.length() > 4000) {
+                response = response.substring(0, 3900) + "\n... (сообщение обрезано)";
+            }
             
-            // Отправляем ответ в Telegram
             sendMessage(chatId, "📋 Ответ от сервера:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + response + "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         });
     }
