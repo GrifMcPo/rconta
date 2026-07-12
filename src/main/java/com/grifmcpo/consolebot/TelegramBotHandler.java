@@ -2,7 +2,6 @@ package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -19,11 +18,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final String botToken;
     private final TelegramConsoleBot plugin;
     private final PlayerManager playerManager;
+    private final CommandLogger commandLogger;
+    private final LogsCommand logsCommand;
 
-    public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager) {
+    public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager, 
+                              CommandLogger commandLogger, LogsCommand logsCommand) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
+        this.commandLogger = commandLogger;
+        this.logsCommand = logsCommand;
     }
 
     @Override
@@ -52,7 +56,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                         player.sendMessage("§aВход разрешён через Telegram!");
                     }
                 });
-                sendMessage(Long.parseLong(chatId), "✅ Вход для " + playerName + " разрешён.");
+                sendMessage(Long.parseLong(chatId), "✅ Вход для **" + playerName + "** разрешён!");
             } else if (data.startsWith("auth_deny_")) {
                 String playerName = data.substring(10);
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -61,7 +65,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                         player.kickPlayer("§cВход запрещён через Telegram!");
                     }
                 });
-                sendMessage(Long.parseLong(chatId), "❌ Вход для " + playerName + " запрещён.");
+                sendMessage(Long.parseLong(chatId), "❌ Вход для **" + playerName + "** запрещён!");
             }
             return;
         }
@@ -74,27 +78,40 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         long userId = update.getMessage().getFrom().getId();
         long chatId = update.getMessage().getChatId();
 
-        plugin.getLogger().info("🔥🔥🔥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ TELEGRAM! 🔥🔥🔥");
-        plugin.getLogger().info("📩 Текст: " + messageText);
-        plugin.getLogger().info("🆔 От пользователя: " + userId);
+        plugin.getLogger().info("📩 Получено: " + messageText + " от " + userId);
 
-        // --- КОМАНДЫ ДЛЯ ВСЕХ ---
+        // --- КОМАНДА /start ---
         if (messageText.equalsIgnoreCase("/start")) {
-            sendMessage(chatId, "🤖 **Бот управления сервером**\n\n" +
-                    "Если вы игрок, привяжите аккаунт через /tg в игре.\n" +
-                    "Если вы админ, используйте !rcon <команда>");
+            sendWelcome(chatId);
             return;
         }
 
-        // --- КОМАНДА /register ---
-        if (messageText.startsWith("/register ")) {
-            String code = messageText.substring(10).trim();
-            if (playerManager.registerPlayer(code, String.valueOf(userId))) {
-                sendMessage(chatId, "✅ Аккаунт успешно привязан!\n" +
-                        "Теперь вы можете использовать /kick my account и /unreg");
+        // --- КОМАНДА /reg <ник> <пароль> ---
+        if (messageText.startsWith("/reg ") || messageText.startsWith("/register ")) {
+            String[] parts = messageText.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используйте: `/reg <ник> <пароль>`\nПример: `/reg pley1657 mypass123`");
+                return;
+            }
+            
+            String playerName = parts[1];
+            String password = parts[2];
+            
+            // Проверяем, существует ли игрок
+            Player player = Bukkit.getPlayerExact(playerName);
+            if (player == null && Bukkit.getPlayerUniqueId(playerName) == null) {
+                sendMessage(chatId, "❌ Игрок с ником **" + playerName + "** не найден на сервере!");
+                return;
+            }
+            
+            if (playerManager.registerPlayer(playerName, password, String.valueOf(userId))) {
+                sendMessage(chatId, "✅ Аккаунт **" + playerName + "** успешно зарегистрирован!\n" +
+                        "Теперь вы можете использовать команды:\n" +
+                        "• `/kick my account` — кикнуть свой аккаунт\n" +
+                        "• `/unreg` — отвязать аккаунт");
             } else {
-                sendMessage(chatId, "❌ Неверный код или код уже использован.\n" +
-                        "Получите новый код через /tg в игре.");
+                sendMessage(chatId, "❌ Игрок **" + playerName + "** уже зарегистрирован!\n" +
+                        "Если это вы, просто зайдите на сервер.");
             }
             return;
         }
@@ -104,9 +121,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String playerName = playerManager.getPlayerNameByTelegram(String.valueOf(userId));
             if (playerName != null) {
                 playerManager.kickAccount(playerName);
-                sendMessage(chatId, "✅ Игрок " + playerName + " был кикнут.");
+                sendMessage(chatId, "✅ Игрок **" + playerName + "** был кикнут с сервера.");
             } else {
-                sendMessage(chatId, "❌ Вы не привязали аккаунт. Используйте /tg в игре.");
+                sendMessage(chatId, "❌ Вы не зарегистрированы. Используйте `/reg <ник> <пароль>`");
             }
             return;
         }
@@ -116,9 +133,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String playerName = playerManager.getPlayerNameByTelegram(String.valueOf(userId));
             if (playerName != null) {
                 playerManager.unregister(playerName);
-                sendMessage(chatId, "✅ Аккаунт " + playerName + " отвязан.");
+                sendMessage(chatId, "✅ Аккаунт **" + playerName + "** отвязан от Telegram.");
             } else {
-                sendMessage(chatId, "❌ Вы не привязали аккаунт.");
+                sendMessage(chatId, "❌ Вы не зарегистрированы.");
             }
             return;
         }
@@ -154,8 +171,15 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- АДМИН-КОМАНДЫ (требуют прав) ---
+        // --- АДМИН-КОМАНДЫ ---
         if (!messageText.startsWith("!rcon")) {
+            // Просто игнорируем другие сообщения
+            return;
+        }
+
+        // Проверка прав для админ-команд
+        if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+            sendMessage(chatId, "⛔ У вас нет прав для выполнения этой команды.");
             return;
         }
 
@@ -165,13 +189,19 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // Проверка прав для админ-команд
-        if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-            sendMessage(chatId, "⛔ У вас нет прав для выполнения команд.");
+        // --- ОБРАБОТКА !rcon logs ---
+        if (command.startsWith("logs ")) {
+            String[] args = command.split(" ");
+            SendMessage response = logsCommand.handleLogs(chatId, args);
+            try {
+                execute(response);
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
             return;
         }
 
-        // --- ОБРАБОТКА АДМИН-КОМАНД ---
+        // --- ОБРАБОТКА АДМИН-КОМАНД (admin add/remove/list) ---
         if (command.startsWith("admin ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
@@ -189,7 +219,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             if (action.equalsIgnoreCase("add")) {
                 if (parts.length < 4) {
-                    sendMessage(chatId, "❌ Укажите кастомный текст: !rcon admin add <айди> <текст>");
+                    sendMessage(chatId, "❌ Укажите текст: !rcon admin add <айди> <текст>");
                     return;
                 }
                 String customText = parts[3];
@@ -208,7 +238,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- ОБРАБОТКА КОМАНДЫ LIST (список админов) ---
         if (command.equalsIgnoreCase("admin list")) {
             StringBuilder list = new StringBuilder("📋 Список администраторов:\n");
             for (String id : plugin.getAdmins().keySet()) {
@@ -218,7 +247,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- ПОЛУЧАЕМ КАСТОМНЫЙ ТЕКСТ ---
+        // --- ВЫПОЛНЕНИЕ ОБЫЧНОЙ КОМАНДЫ ОТ АДМИНА ---
         String customSender = plugin.getCustomSender(userId);
         if (customSender == null && userId == plugin.getOwnerId()) {
             customSender = "RCON@Grif_Mo";
@@ -233,6 +262,28 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
             sendCustomMessage(finalCommand, finalCustomSender);
         });
+    }
+
+    // --- ПРИВЕТСТВИЕ (без упоминания !rcon) ---
+    private void sendWelcome(long chatId) {
+        String welcome = "🎮 **Добро пожаловать в бот управления сервером!**\n\n" +
+                "🔹 **Регистрация:**\n" +
+                "`/reg <ник> <пароль>` — привязать аккаунт\n" +
+                "Пример: `/reg pley1657 mypass123`\n\n" +
+                "🔹 **Управление аккаунтом:**\n" +
+                "`/kick my account` — кикнуть свой аккаунт с сервера\n" +
+                "`/unreg` — отвязать аккаунт\n\n" +
+                "🔹 **Информация:**\n" +
+                "`!online` — список игроков онлайн\n" +
+                "`!tps` — производительность сервера\n" +
+                "`!ping` — пинг игрока\n" +
+                "`!rules` — правила сервера\n" +
+                "`!info` — информация о сервере\n\n" +
+                "🔹 **Помощь:**\n" +
+                "`!help` — список всех команд\n\n" +
+                "💡 *Для входа на сервер после регистрации просто зайдите в игру!*\n" +
+                "🔒 *Бот запросит подтверждение входа для безопасности.*";
+        sendMessage(chatId, welcome);
     }
 
     // --- ИГРОВЫЕ КОМАНДЫ ---
@@ -257,8 +308,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private void sendPing(long chatId) {
         Player p = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
         if (p != null) {
-            int ping = p.getPing();
-            sendMessage(chatId, "📶 **Пинг игрока " + p.getName() + ":** " + ping + " мс");
+            sendMessage(chatId, "📶 **Пинг игрока " + p.getName() + ":** " + p.getPing() + " мс");
         } else {
             sendMessage(chatId, "❌ На сервере нет игроков.");
         }
@@ -276,20 +326,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     private void sendHelp(long chatId) {
         String help = "🤖 **Доступные команды:**\n\n" +
-                "**Для всех:**\n" +
-                "!online / !онлайн - список игроков\n" +
-                "!tps / !тпс - производительность\n" +
-                "!ping / !пинг - пинг игрока\n" +
-                "!rules / !правила - правила\n" +
-                "!info / !инфо - информация о сервере\n" +
-                "/register <код> - привязать аккаунт\n" +
-                "/kick my account - кикнуть свой аккаунт\n" +
-                "/unreg - отвязать аккаунт\n\n" +
-                "**Для админов:**\n" +
-                "!rcon <команда> - выполнить команду\n" +
-                "!rcon admin add <айди> <текст> - добавить админа\n" +
-                "!rcon admin remove <айди> - удалить админа\n" +
-                "!rcon admin list - список админов";
+                "**Регистрация:**\n" +
+                "`/reg <ник> <пароль>` — привязать аккаунт\n\n" +
+                "**Управление аккаунтом:**\n" +
+                "`/kick my account` — кикнуть свой аккаунт\n" +
+                "`/unreg` — отвязать аккаунт\n\n" +
+                "**Информация:**\n" +
+                "`!online` — список игроков онлайн\n" +
+                "`!tps` — производительность сервера\n" +
+                "`!ping` — пинг игрока\n" +
+                "`!rules` — правила сервера\n" +
+                "`!info` — информация о сервере";
         sendMessage(chatId, help);
     }
 
