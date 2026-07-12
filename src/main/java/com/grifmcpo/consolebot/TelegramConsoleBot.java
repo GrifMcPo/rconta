@@ -131,3 +131,4 @@ public class TelegramConsoleBot extends JavaPlugin {
         return commandLogger;
     }
 }
+
