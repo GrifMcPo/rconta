@@ -1,6 +1,5 @@
 package com.grifmcpo.consolebot;
 
-
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -30,7 +29,7 @@ public class CommandListener implements Listener {
         commandLogger.logCommand(player.getName(), event.getMessage());
 
         // ============================================
-        // ==== КОМАНДЫ ДЛЯ ИГРОКОВ (РАБОТАЮТ) =====
+        // ==== КОМАНДЫ ДЛЯ ИГРОКОВ =====
         // ============================================
 
         // --- /ban ---
@@ -70,12 +69,13 @@ public class CommandListener implements Listener {
         if (command.startsWith("/unban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                player.sendMessage("§cИспользуй: /unban <ник>");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /unban <ник> <причина>");
                 return;
             }
             String target = parts[1];
-            if (punishmentManager.unbanPlayer(target, player.getName())) {
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+            if (punishmentManager.unbanPlayer(target, player.getName(), reason)) {
                 player.sendMessage("§aИгрок " + target + " разбанен!");
             } else {
                 player.sendMessage("§cИгрок " + target + " не забанен!");
@@ -120,12 +120,13 @@ public class CommandListener implements Listener {
         if (command.startsWith("/unmute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                player.sendMessage("§cИспользуй: /unmute <ник>");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /unmute <ник> <причина>");
                 return;
             }
             String target = parts[1];
-            if (punishmentManager.unmutePlayer(target, player.getName())) {
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+            if (punishmentManager.unmutePlayer(target, player.getName(), reason)) {
                 player.sendMessage("§aИгрок " + target + " размучен!");
             } else {
                 player.sendMessage("§cИгрок " + target + " не замучен!");
@@ -219,10 +220,6 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ========================================
-    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
-    // ========================================
-
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -235,10 +232,6 @@ public class CommandListener implements Listener {
             player.sendMessage("§fВыдал: §e" + issuer);
         }
     }
-
-    // ========================================
-    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
-    // ========================================
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
