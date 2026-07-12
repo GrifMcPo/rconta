@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -13,7 +13,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 public class TelegramBotHandler extends TelegramLongPollingBot {
 
@@ -54,13 +53,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // ===== ОБРАБОТКА КНОПОК =====
+        // ===== КНОПКИ =====
         if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
             String chatId = update.getCallbackQuery().getMessage().getChatId().toString();
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
-            // --- Кнопки подтверждения входа ---
+            // --- Подтверждение входа ---
             if (data.startsWith("auth_allow_")) {
                 String playerName = data.substring(11);
                 String ip = "0.0.0.0";
@@ -86,7 +85,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- Кнопки подтверждения команд (ban/kick/unban) ---
+            // --- Подтверждение команд ---
             if (data.startsWith("confirm_")) {
                 String[] parts = data.split("_");
                 String action = parts[1];
@@ -134,7 +133,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- Пагинация через кнопки ---
+            // --- Пагинация ---
             if (data.startsWith("page_")) {
                 String[] parts = data.split("_");
                 String type = parts[1];
@@ -149,7 +148,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ===== ОБРАБОТКА СООБЩЕНИЙ =====
+        // ===== СООБЩЕНИЯ =====
         if (!update.hasMessage() || !update.getMessage().hasText()) {
             return;
         }
@@ -172,7 +171,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- /reg в Telegram (регистрация) ---
+        // --- /reg ---
         if (messageText.startsWith("/reg ") || messageText.startsWith("/register ")) {
             String[] parts = messageText.split(" ");
             if (parts.length < 3) {
@@ -204,25 +203,22 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !online ---
+        // --- Игровые команды ---
         if (messageText.startsWith("!online") || messageText.startsWith("!онлайн")) {
             sendOnline(chatId);
             return;
         }
 
-        // --- !tps ---
         if (messageText.startsWith("!tps") || messageText.startsWith("!тпс")) {
             sendTps(chatId);
             return;
         }
 
-        // --- !help ---
         if (messageText.startsWith("!help") || messageText.startsWith("!помощь")) {
             sendHelp(chatId);
             return;
         }
 
-        // --- !info ---
         if (messageText.startsWith("!info") || messageText.startsWith("!инфо")) {
             sendInfo(chatId);
             return;
@@ -244,7 +240,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon logs ---
+        // --- logs ---
         if (command.startsWith("logs ")) {
             String[] args = command.split(" ");
             SendMessage response = logsCommand.handleLogs(chatId, args);
@@ -256,7 +252,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- Опасные команды — запрос подтверждения ---
+        // --- Опасные команды (с подтверждением) ---
         String[] dangerous = {"ban ", "mute ", "kick ", "unban ", "unmute "};
         for (String d : dangerous) {
             if (command.startsWith(d)) {
@@ -269,7 +265,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         executeNormalCommand(chatId, command, userId);
     }
 
-    // ===== ОТПРАВКА ЗАПРОСА ПОДТВЕРЖДЕНИЯ =====
+    // ===== ЗАПРОС ПОДТВЕРЖДЕНИЯ =====
     private void sendConfirmationRequest(long chatId, String command, long userId) {
         String[] parts = command.split(" ");
         String action = parts[0];
@@ -331,36 +327,40 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
     }
 
-    // ===== ВЫПОЛНЕНИЕ ОБЫЧНОЙ КОМАНДЫ =====
+    // ===== ВЫПОЛНЕНИЕ ОБЫЧНОЙ КОМАНДЫ (С АВТОУДАЛЕНИЕМ) =====
     private void executeNormalCommand(long chatId, String command, long userId) {
         String issuer = plugin.getCustomSender(userId);
         if (issuer == null && userId == plugin.getOwnerId()) {
             issuer = "RCON@Grif_Mo";
         }
 
-        String tempMessage = "[БОТ] Выполняю команду..";
-        int tempMsgId = 0;
+        final long finalChatId = chatId;
+        final String finalCommand = command;
+        final String finalIssuer = issuer;
+
+        // Временное сообщение
+        final int[] tempMsgId = {0};
         try {
             SendMessage temp = new SendMessage();
             temp.setChatId(String.valueOf(chatId));
-            temp.setText(tempMessage);
+            temp.setText("[БОТ] Выполняю команду..");
             var sent = execute(temp);
-            tempMsgId = sent.getMessageId();
-        } catch (Exception e) {}
+            tempMsgId[0] = sent.getMessageId();
+        } catch (Exception e) {
+            // Игнорируем
+        }
 
-        final String finalCommand = command;
-        final int finalTempMsgId = tempMsgId;
+        final int finalTempMsgId = tempMsgId[0];
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            String response = commandExecutor.executeCommand(finalCommand, issuer);
+            String response = commandExecutor.executeCommand(finalCommand, finalIssuer);
             String formatted = "[БОТ] Ответ сервера:\n" + SEPARATOR + "\n" + response + "\n" + SEPARATOR;
 
-            // Удаляем временное сообщение
             if (finalTempMsgId != 0) {
-                deleteMessage(String.valueOf(chatId), finalTempMsgId);
+                deleteMessage(String.valueOf(finalChatId), finalTempMsgId);
             }
 
-            sendMessage(chatId, formatted);
+            sendMessage(finalChatId, formatted);
         });
     }
 
@@ -395,7 +395,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendFormattedResponse(chatId, response);
     }
 
-    // ===== ПАГИНАЦИЯ ЧЕРЕЗ КНОПКИ =====
+    // ===== ПАГИНАЦИЯ =====
     private void handlePagination(long chatId, String type, String playerName, int page, int messageId) {
         int pageSize = 10;
         List<String> items = new ArrayList<>();
@@ -411,7 +411,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(playerName);
                 for (PunishmentManager.HistoryEntry entry : history) {
                     String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
-                    String status = entry.type.equals("ban") ? 
+                    String status = entry.type.equals("ban") ?
                         (punishmentManager.isBanned(playerName) ? "[Активен]" : "[Истек]") :
                         (punishmentManager.isMuted(playerName) ? "[Активен]" : "[Истек]");
                     items.add(" - " + timeAgo + " -\n   " + playerName + " был " + entry.getActionName() +
@@ -465,10 +465,8 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             markup.setKeyboard(rows);
         }
 
-        // Удаляем старое сообщение
         deleteMessage(String.valueOf(chatId), messageId);
 
-        // Отправляем новое
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
         msg.setText("[БОТ] Ответ сервера:\n" + response.toString());
