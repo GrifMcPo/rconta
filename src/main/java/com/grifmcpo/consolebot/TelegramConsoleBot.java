@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -21,7 +21,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private CommandExecutor commandExecutor;
     private PunishmentManager punishmentManager;
     private AdminLogger adminLogger;
-    private AuthManager authManager;
+    private RankManager rankManager;
     private TelegramBotHandler botHandler;
 
     @Override
@@ -43,18 +43,15 @@ public class TelegramConsoleBot extends JavaPlugin {
         commandExecutor = new CommandExecutor(this);
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
-        authManager = new AuthManager(this);
+        rankManager = new RankManager(this);
 
-        // Передаём 4 аргумента в CommandListener
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, authManager, this), this);
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor, punishmentManager, authManager);
+            botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, 
+                    commandExecutor, punishmentManager, rankManager);
             botsApi.registerBot(botHandler);
-            
-            authManager.setBotHandler(botHandler);
-            
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
@@ -73,7 +70,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    // ===== ЗАГРУЗКА АДМИНОВ =====
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
         if (!adminsFile.exists()) {
@@ -111,7 +107,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    // ===== ГЕТТЕРЫ =====
     public Map<String, String> getAdmins() {
         return admins;
     }
@@ -158,8 +153,8 @@ public class TelegramConsoleBot extends JavaPlugin {
         return adminLogger;
     }
 
-    public AuthManager getAuthManager() {
-        return authManager;
+    public RankManager getRankManager() {
+        return rankManager;
     }
 
     public TelegramBotHandler getBotHandler() {
