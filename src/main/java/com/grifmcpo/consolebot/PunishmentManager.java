@@ -32,7 +32,6 @@ public class PunishmentManager {
         startAutoUnbanTask();
     }
 
-    // ===== ОЧИСТКА ДАННЫХ =====
     private String cleanString(String input) {
         if (input == null) return "Без причины";
         String cleaned = CLEAN_PATTERN.matcher(input).replaceAll("");
@@ -102,7 +101,9 @@ public class PunishmentManager {
         return minutes + " мин.";
     }
 
+    // ========================================
     // ===== БАНЫ =====
+    // ========================================
 
     public boolean isBanned(String playerName) {
         return punishmentConfig.getBoolean(playerName + ".bans.active", false);
@@ -182,7 +183,9 @@ public class PunishmentManager {
         return true;
     }
 
+    // ========================================
     // ===== МУТЫ =====
+    // ========================================
 
     public boolean isMuted(String playerName) {
         return punishmentConfig.getBoolean(playerName + ".mutes.active", false);
@@ -266,7 +269,9 @@ public class PunishmentManager {
         return true;
     }
 
+    // ========================================
     // ===== КИК =====
+    // ========================================
 
     public boolean kickPlayer(String playerName, String issuer, String reason) {
         Player player = Bukkit.getPlayerExact(playerName);
@@ -293,7 +298,9 @@ public class PunishmentManager {
         return true;
     }
 
+    // ========================================
     // ===== ИСТОРИЯ =====
+    // ========================================
 
     private void addHistory(String playerName, String type, long timestamp, String issuer, String reason, String duration) {
         int historyId = punishmentConfig.getInt(playerName + ".history_count", 0) + 1;
@@ -350,7 +357,9 @@ public class PunishmentManager {
         }
     }
 
+    // ========================================
     // ===== СПИСКИ С ПАГИНАЦИЕЙ =====
+    // ========================================
 
     public List<String> getBanList(int page, int pageSize) {
         List<String> bans = new ArrayList<>();
@@ -378,29 +387,6 @@ public class PunishmentManager {
         return paginate(mutes, page, pageSize);
     }
 
-    public List<String> getHistoryFormatted(String playerName, int page, int pageSize) {
-        List<HistoryEntry> history = getHistory(playerName);
-        List<String> formatted = new ArrayList<>();
-
-        for (HistoryEntry entry : history) {
-            String timeAgo = getTimeAgo(entry.timestamp);
-            String formattedDate = formatDate(entry.timestamp);
-            String status = isPunishmentActive(playerName, entry.type) ? "[Активен]" : "[Истек]";
-            formatted.add(" - " + timeAgo + " -");
-            formatted.add("   " + playerName + " был " + entry.getActionName() +
-                    " на " + entry.duration + " " +
-                    entry.issuer + ": " + entry.reason + " " + status);
-        }
-
-        return paginate(formatted, page, pageSize);
-    }
-
-    private boolean isPunishmentActive(String playerName, String type) {
-        if (type.equals("ban")) return isBanned(playerName);
-        if (type.equals("mute")) return isMuted(playerName);
-        return false;
-    }
-
     private List<String> paginate(List<String> items, int page, int pageSize) {
         int start = (page - 1) * pageSize;
         int end = Math.min(start + pageSize, items.size());
@@ -412,7 +398,9 @@ public class PunishmentManager {
         return (int) Math.ceil((double) totalItems / pageSize);
     }
 
-    // ===== АВТОСНЯТИЕ С ФЛАГОМ =====
+    // ========================================
+    // ===== АВТОСНЯТИЕ =====
+    // ========================================
 
     private void startAutoUnmuteTask() {
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
@@ -466,7 +454,9 @@ public class PunishmentManager {
         }, 0L, 20L * 60);
     }
 
-    // ===== ПРОВЕРКИ =====
+    // ========================================
+    // ===== ПРОВЕРКИ (БЕЗ ЗАМОРОЗКИ!) =====
+    // ========================================
 
     public void checkOnJoin(Player player) {
         String name = player.getName();
