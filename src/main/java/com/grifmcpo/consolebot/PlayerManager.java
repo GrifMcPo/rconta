@@ -16,9 +16,8 @@ public class PlayerManager {
     private final JavaPlugin plugin;
     private File authFile;
     private FileConfiguration authConfig;
-    private final Map<String, String> pendingCodes = new HashMap<>();
+    private final Map<String, String> pendingRegistrations = new HashMap<>(); // ник -> пароль (временные данные)
     private final Map<UUID, String> playerSessions = new HashMap<>();
-    private final Map<String, Long> codeTimestamps = new HashMap<>();
 
     public PlayerManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -45,41 +44,27 @@ public class PlayerManager {
         }
     }
 
-    public String generateCode(String playerName) {
-        String code = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        pendingCodes.put(code, playerName);
-        codeTimestamps.put(code, System.currentTimeMillis());
-        plugin.getLogger().info("📝 Код для " + playerName + ": " + code);
-        return code;
-    }
-
-    public boolean registerPlayer(String code, String telegramId) {
-        if (!pendingCodes.containsKey(code)) {
+    // Регистрация через бота: /reg <ник> <пароль>
+    public boolean registerPlayer(String playerName, String password, String telegramId) {
+        // Проверяем, не зарегистрирован ли уже
+        if (isRegistered(playerName)) {
             return false;
         }
 
-        Long timestamp = codeTimestamps.get(code);
-        if (timestamp == null || (System.currentTimeMillis() - timestamp) > 5 * 60 * 1000) {
-            pendingCodes.remove(code);
-            codeTimestamps.remove(code);
-            return false;
-        }
-
-        String playerName = pendingCodes.remove(code);
-        codeTimestamps.remove(code);
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
         if (uuid == null) {
-            // Если игрок оффлайн, пробуем найти его по имени через Bukkit
             Player player = Bukkit.getPlayerExact(playerName);
             if (player != null) {
                 uuid = player.getUniqueId();
             } else {
-                return false;
+                return false; // игрок не найден
             }
         }
 
+        // Сохраняем данные (пароль в открытом виде, но для простоты — можно захешировать позже)
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
+        authConfig.set(playerName + ".password", password);
         authConfig.set(playerName + ".ip", getPlayerIP(playerName));
         authConfig.set(playerName + ".sessionTime", System.currentTimeMillis());
         authConfig.set(playerName + ".registered", true);
@@ -100,7 +85,6 @@ public class PlayerManager {
         return authConfig.getString(playerName + ".telegramId");
     }
 
-    // ========== МЕТОД ДЛЯ ПОЛУЧЕНИЯ ИГРОКА ПО TELEGRAM ID ==========
     public String getPlayerNameByTelegram(String telegramId) {
         if (telegramId == null) return null;
         for (String key : authConfig.getKeys(false)) {
@@ -110,6 +94,11 @@ public class PlayerManager {
             }
         }
         return null;
+    }
+
+    public boolean checkPassword(String playerName, String password) {
+        String savedPassword = authConfig.getString(playerName + ".password");
+        return savedPassword != null && savedPassword.equals(password);
     }
 
     public boolean isSessionValid(String playerName) {
