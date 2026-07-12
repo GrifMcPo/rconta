@@ -12,6 +12,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 public class TelegramBotHandler extends TelegramLongPollingBot {
 
@@ -22,12 +23,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final LogsCommand logsCommand;
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
+    private final AuthManager authManager;
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
-                              CommandExecutor commandExecutor, PunishmentManager punishmentManager) {
+                              CommandExecutor commandExecutor, PunishmentManager punishmentManager,
+                              AuthManager authManager) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
@@ -35,6 +38,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.logsCommand = logsCommand;
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
+        this.authManager = authManager;
     }
 
     @Override
@@ -93,8 +97,74 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- КОМАНДА /reg ---
+        // --- КОМАНДА /reg в Telegram ---
         if (messageText.startsWith("/reg ") || messageText.startsWith("/register ")) {
+            String[] parts = messageText.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: /reg <ник> <код>\nПример: /reg pley1657 123456");
+                return;
+            }
+
+            String playerName = parts[1];
+            String code = parts[2];
+
+            if (authManager.verifyAuthCode(playerName, code)) {
+                String ip = "0.0.0.0";
+                String tempPassword = UUID.randomUUID().toString().substring(0, 8);
+
+                if (authManager.registerPlayer(playerName, tempPassword, String.valueOf(userId), ip)) {
+                    authManager.activateSession(playerName, ip);
+                    sendMessage(chatId, "✅ Аккаунт " + playerName + " зарегистрирован и подтверждён!\n" +
+                            "🔐 Теперь вы можете заходить на сервер.");
+
+                    Player player = Bukkit.getPlayerExact(playerName);
+                    if (player != null && player.isOnline()) {
+                        authManager.unfreezePlayer(player);
+                        player.sendMessage("§a✅ Аккаунт подтверждён через Telegram!");
+                    }
+                } else {
+                    sendMessage(chatId, "❌ Ошибка регистрации! Возможно ник уже занят.");
+                }
+            } else {
+                sendMessage(chatId, "❌ Неверный код или код истёк. Попробуйте зайти на сервер заново.");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /login в Telegram ---
+        if (messageText.startsWith("/login ")) {
+            String[] parts = messageText.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: /login <код>");
+                return;
+            }
+
+            String code = parts[1];
+            String playerName = authManager.getPlayerNameByTelegram(String.valueOf(userId));
+
+            if (playerName == null) {
+                sendMessage(chatId, "❌ Вы не зарегистрированы. Используйте /reg <ник> <код>");
+                return;
+            }
+
+            if (authManager.verifyAuthCode(playerName, code)) {
+                String ip = "0.0.0.0";
+                authManager.activateSession(playerName, ip);
+                sendMessage(chatId, "✅ Вход подтверждён для " + playerName + "!");
+
+                Player player = Bukkit.getPlayerExact(playerName);
+                if (player != null && player.isOnline()) {
+                    authManager.unfreezePlayer(player);
+                    player.sendMessage("§a✅ Вход подтверждён через Telegram!");
+                }
+            } else {
+                sendMessage(chatId, "❌ Неверный код или код истёк.");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /reg старый (для совместимости) ---
+        if (messageText.startsWith("/reg ") && messageText.split(" ").length >= 3) {
             String[] parts = messageText.split(" ");
             if (parts.length < 3) {
                 sendMessage(chatId, "❌ Используй: /reg <ник> <пароль>\nПример: /reg pley1657 mypass123");
@@ -337,7 +407,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon banlist (С ПАГИНАЦИЕЙ) ---
+        // --- !rcon banlist (с пагинацией) ---
         if (command.equalsIgnoreCase("banlist") || command.startsWith("banlist ")) {
             int page = 1;
             int pageSize = 10;
@@ -368,7 +438,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon mutelist (С ПАГИНАЦИЕЙ) ---
+        // --- !rcon mutelist (с пагинацией) ---
         if (command.equalsIgnoreCase("mutelist") || command.startsWith("mutelist ")) {
             int page = 1;
             int pageSize = 10;
@@ -399,7 +469,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon shist / hist (С ПАГИНАЦИЕЙ И КРАСИВЫМ ВЫВОДОМ) ---
+        // --- !rcon shist / hist (с пагинацией) ---
         if (command.startsWith("shist ") || command.startsWith("hist ")) {
             String[] parts = command.split(" ");
             if (parts.length < 2) {
@@ -419,10 +489,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             List<String> formattedHistory = new ArrayList<>();
             for (PunishmentManager.HistoryEntry entry : allHistory) {
                 String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
-                String status = "❓";
-                if (entry.type.equals("ban")) status = punishmentManager.isBanned(playerName) ? "[Активен]" : "[Истек]";
-                else if (entry.type.equals("mute")) status = punishmentManager.isMuted(playerName) ? "[Активен]" : "[Истек]";
-                else status = "[Истек]";
+                String status;
+                if (entry.type.equals("ban")) {
+                    status = punishmentManager.isBanned(playerName) ? "[Активен]" : "[Истек]";
+                } else if (entry.type.equals("mute")) {
+                    status = punishmentManager.isMuted(playerName) ? "[Активен]" : "[Истек]";
+                } else {
+                    status = "[Истек]";
+                }
                 formattedHistory.add(" - " + timeAgo + " -\n   " + playerName + " был " + entry.getActionName() +
                         " на " + entry.duration + " " +
                         entry.issuer + ": " + entry.reason + " " + status);
@@ -543,7 +617,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     private void sendHelp(long chatId) {
         String help = "🤖 Доступные команды:\n\n" +
-                "📝 /reg <ник> <пароль> — привязать аккаунт\n" +
+                "📝 Регистрация:\n" +
+                "/reg <ник> <код> — зарегистрировать аккаунт\n" +
+                "/login <код> — подтвердить вход\n\n" +
                 "👥 !online — список игроков онлайн\n" +
                 "⚡ !tps — производительность сервера\n" +
                 "ℹ️ !info — информация о сервере\n\n" +
@@ -574,10 +650,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String welcome = "🎮 Добро пожаловать!\n" +
                 SEPARATOR + "\n" +
                 "📝 Регистрация:\n" +
-                "/reg <ник> <пароль> — привязать аккаунт\n" +
-                "Пример: /reg pley1657 mypass123\n\n" +
-                "🔐 После регистрации просто заходи на сервер.\n" +
-                "Бот запросит подтверждение входа.\n" +
+                "1️⃣ Зайди на сервер — получишь код в чате\n" +
+                "2️⃣ Отправь боту: /reg <ник> <код>\n" +
+                "3️⃣ Готово! Теперь ты зарегистрирован.\n\n" +
+                "🔐 При каждом входе потребуется код для подтверждения.\n" +
                 SEPARATOR + "\n" +
                 "💡 Для помощи напиши /help";
         sendMessage(chatId, welcome);
