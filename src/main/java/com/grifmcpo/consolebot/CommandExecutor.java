@@ -2,7 +2,6 @@ package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
-import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class CommandExecutor {
@@ -19,7 +18,10 @@ public class CommandExecutor {
     public String executeCommand(String command, String senderName) {
         StringBuilder response = new StringBuilder();
 
-        // Создаём кастомного отправителя
+        // Получаем консоль как основу
+        CommandSender console = Bukkit.getConsoleSender();
+
+        // Создаём враппер вокруг консоли с переопределённым именем
         CommandSender customSender = new CommandSender() {
             @Override
             public void sendMessage(String message) {
@@ -67,7 +69,7 @@ public class CommandExecutor {
 
             @Override
             public Spigot spigot() {
-                return Bukkit.getConsoleSender().spigot();
+                return console.spigot();
             }
         };
 
