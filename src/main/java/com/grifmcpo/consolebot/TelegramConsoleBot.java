@@ -45,14 +45,14 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         authManager = new AuthManager(this);
 
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, authManager), this);
+        // Передаём 4 аргумента в CommandListener
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, authManager, this), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor, punishmentManager, authManager);
             botsApi.registerBot(botHandler);
             
-            // Передаём botHandler в AuthManager
             authManager.setBotHandler(botHandler);
             
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
@@ -62,5 +62,107 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    // ... остальные методы без изменений
+    @Override
+    public void onDisable() {
+        getLogger().info("❌ ConsoleBot выключен.");
+        if (commandLogger != null) {
+            commandLogger.saveLogs();
+        }
+        if (commandExecutor != null) {
+            commandExecutor.close();
+        }
+    }
+
+    // ===== ЗАГРУЗКА АДМИНОВ =====
+    private void loadAdmins() {
+        adminsFile = new File(getDataFolder(), "admins.yml");
+        if (!adminsFile.exists()) {
+            saveResource("admins.yml", false);
+        }
+        reloadAdmins();
+    }
+
+    public void reloadAdmins() {
+        admins.clear();
+        if (adminsFile.exists()) {
+            try {
+                org.bukkit.configuration.file.YamlConfiguration config =
+                        org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(adminsFile);
+                for (String key : config.getKeys(false)) {
+                    admins.put(key, config.getString(key));
+                }
+            } catch (Exception e) {
+                getLogger().warning("❌ Ошибка загрузки admins.yml: " + e.getMessage());
+            }
+        }
+        getLogger().info("✅ Загружено администраторов: " + admins.size());
+    }
+
+    public void saveAdmins() {
+        try {
+            org.bukkit.configuration.file.YamlConfiguration config =
+                    org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(adminsFile);
+            for (Map.Entry<String, String> entry : admins.entrySet()) {
+                config.set(entry.getKey(), entry.getValue());
+            }
+            config.save(adminsFile);
+        } catch (Exception e) {
+            getLogger().severe("❌ Ошибка сохранения admins.yml: " + e.getMessage());
+        }
+    }
+
+    // ===== ГЕТТЕРЫ =====
+    public Map<String, String> getAdmins() {
+        return admins;
+    }
+
+    public long getOwnerId() {
+        return ownerId;
+    }
+
+    public void addAdmin(String telegramId, String playerName) {
+        admins.put(telegramId, playerName);
+        saveAdmins();
+    }
+
+    public void removeAdmin(String telegramId) {
+        admins.remove(telegramId);
+        saveAdmins();
+    }
+
+    public boolean isAdmin(long telegramId) {
+        return admins.containsKey(String.valueOf(telegramId));
+    }
+
+    public String getCustomSender(long telegramId) {
+        return admins.get(String.valueOf(telegramId));
+    }
+
+    public PlayerManager getPlayerManager() {
+        return playerManager;
+    }
+
+    public CommandLogger getCommandLogger() {
+        return commandLogger;
+    }
+
+    public CommandExecutor getCommandExecutor() {
+        return commandExecutor;
+    }
+
+    public PunishmentManager getPunishmentManager() {
+        return punishmentManager;
+    }
+
+    public AdminLogger getAdminLogger() {
+        return adminLogger;
+    }
+
+    public AuthManager getAuthManager() {
+        return authManager;
+    }
+
+    public TelegramBotHandler getBotHandler() {
+        return botHandler;
+    }
 }
