@@ -45,10 +45,12 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
 
+        // Исправлено: передаём только 2 аргумента
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+            // Исправлено: передаём RankManager вместо AuthManager
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, 
                     commandExecutor, punishmentManager, rankManager);
             botsApi.registerBot(botHandler);
