@@ -40,7 +40,8 @@ public class TelegramConsoleBot extends JavaPlugin {
         commandExecutor = new CommandExecutor(this);
         punishmentManager = new PunishmentManager(this);
 
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, this), this);
+        // Исправлено: передаём только 2 аргумента
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
