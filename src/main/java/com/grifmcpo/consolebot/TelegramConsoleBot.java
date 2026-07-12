@@ -19,6 +19,8 @@ public class TelegramConsoleBot extends JavaPlugin {
     private long ownerId = 8889631346L;
     private File adminsFile;
     private PlayerManager playerManager;
+    private CommandLogger commandLogger;
+    private LogsCommand logsCommand;
 
     @Override
     public void onEnable() {
@@ -34,10 +36,15 @@ public class TelegramConsoleBot extends JavaPlugin {
 
         loadAdmins();
         playerManager = new PlayerManager(this);
+        commandLogger = new CommandLogger(this);
+        logsCommand = new LogsCommand(this);
+
+        // Регистрируем слушатель команд
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager));
+            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand));
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
@@ -48,34 +55,9 @@ public class TelegramConsoleBot extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("❌ ConsoleBot выключен.");
-    }
-
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (command.getName().equalsIgnoreCase("tg")) {
-            if (!(sender instanceof Player)) {
-                sender.sendMessage("§cЭта команда только для игроков!");
-                return true;
-            }
-
-            Player player = (Player) sender;
-            String playerName = player.getName();
-
-            if (playerManager.isRegistered(playerName)) {
-                player.sendMessage("§eВаш аккаунт уже привязан к Telegram!");
-                player.sendMessage("§7Если хотите отвязать — используйте /unreg в Telegram");
-                return true;
-            }
-
-            String code = playerManager.generateCode(playerName);
-            player.sendMessage("§a🔑 Ваш код для привязки аккаунта:");
-            player.sendMessage("§e" + code);
-            player.sendMessage("§7Отправьте этот код боту в Telegram:");
-            player.sendMessage("§f/register " + code);
-            player.sendMessage("§8(Код действителен 5 минут)");
-            return true;
+        if (commandLogger != null) {
+            commandLogger.saveLogs();
         }
-        return false;
     }
 
     private void loadAdmins() {
@@ -143,5 +125,9 @@ public class TelegramConsoleBot extends JavaPlugin {
 
     public PlayerManager getPlayerManager() {
         return playerManager;
+    }
+
+    public CommandLogger getCommandLogger() {
+        return commandLogger;
     }
 }
