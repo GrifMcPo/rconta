@@ -145,7 +145,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon shist <ник> (история наказаний) ---
+        // --- !rcon shist / hist ---
         if (command.startsWith("shist ") || command.startsWith("hist ")) {
             String[] parts = command.split(" ");
             if (parts.length < 2) {
@@ -157,19 +157,19 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon banlist (список банов) ---
+        // --- !rcon banlist ---
         if (command.equalsIgnoreCase("banlist")) {
             handleBanList(chatId);
             return;
         }
 
-        // --- !rcon mutelist (список мутов) ---
+        // --- !rcon mutelist ---
         if (command.equalsIgnoreCase("mutelist")) {
             handleMuteList(chatId);
             return;
         }
 
-        // --- !rcon staff (список онлайна админов) ---
+        // --- !rcon staff ---
         if (command.equalsIgnoreCase("staff")) {
             handleStaffList(chatId);
             return;
@@ -221,15 +221,110 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- ВЫПОЛНЕНИЕ ОБЫЧНОЙ КОМАНДЫ ---
+        // --- ВЫПОЛНЕНИЕ КОМАНДЫ С ОТВЕТОМ ---
         final String finalCommand = command;
 
-        sendMessage(chatId, "⏳ Выполняю: " + command);
+        sendMessage(chatId, "[БОТ] Выполняю команду..");
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
-            sendMessage(chatId, "✅ Команда выполнена: " + finalCommand);
+            String response = commandExecutor.executeCommand(finalCommand, "RCON");
+            String formatted = formatResponse(response);
+            sendMessage(chatId, "[БОТ] Ответ сервера:\n" + formatted);
         });
+    }
+
+    // --- ФОРМАТИРОВАНИЕ ОТВЕТА ---
+    private String formatResponse(String response) {
+        if (response == null || response.isEmpty()) {
+            return "✅ Команда выполнена (ответа нет)";
+        }
+        String clean = response.trim();
+        if (clean.length() > 4000) {
+            clean = clean.substring(0, 3900) + "\n... (сообщение обрезано)";
+        }
+        return clean;
+    }
+
+    // --- ИСТОРИЯ НАКАЗАНИЙ ---
+    private void handleHistory(long chatId, String playerName) {
+        if (!playerManager.isRegistered(playerName)) {
+            sendMessage(chatId, "❌ Игрок " + playerName + " не зарегистрирован в системе.");
+            return;
+        }
+
+        List<CommandLogger.LogEntry> logs = commandLogger.getLogs(playerName, 30);
+        List<String> punishments = new ArrayList<>();
+        String[] punishCommands = {"ban", "mute", "warn", "kick", "jail", "tempban", "tempmute"};
+        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+        sdf.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
+
+        for (CommandLogger.LogEntry entry : logs) {
+            String cmd = entry.command.toLowerCase();
+            for (String pCmd : punishCommands) {
+                if (cmd.startsWith("/" + pCmd) || cmd.startsWith(pCmd)) {
+                    punishments.add("• " + sdf.format(new Date()) + " → " + entry.command);
+                    break;
+                }
+            }
+        }
+
+        if (punishments.isEmpty()) {
+            sendMessage(chatId, "📋 История наказаний для " + playerName + ":\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ Наказаний не найдено.");
+            return;
+        }
+
+        StringBuilder response = new StringBuilder();
+        response.append("📋 История наказаний для ").append(playerName).append("\n");
+        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        int count = 0;
+        for (String p : punishments) {
+            if (count >= 20) {
+                response.append("\n... и ещё ").append(punishments.size() - 20).append(" записей");
+                break;
+            }
+            response.append(p).append("\n");
+            count++;
+        }
+        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        response.append("📊 Всего записей: ").append(punishments.size());
+
+        sendMessage(chatId, response.toString());
+    }
+
+    // --- СПИСОК БАНОВ ---
+    private void handleBanList(long chatId) {
+        sendMessage(chatId, "[БОТ] Выполняю команду..");
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            String response = commandExecutor.executeCommand("banlist", "RCON");
+            sendMessage(chatId, "[БОТ] Ответ сервера:\n" + formatResponse(response));
+        });
+    }
+
+    // --- СПИСОК МУТОВ ---
+    private void handleMuteList(long chatId) {
+        sendMessage(chatId, "[БОТ] Выполняю команду..");
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            String response = commandExecutor.executeCommand("mutelist", "RCON");
+            sendMessage(chatId, "[БОТ] Ответ сервера:\n" + formatResponse(response));
+        });
+    }
+
+    // --- СПИСОК АДМИНИСТРАЦИИ ---
+    private void handleStaffList(long chatId) {
+        StringBuilder response = new StringBuilder();
+        response.append("👑 Администрация онлайн:\n");
+        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        boolean hasStaff = false;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.hasPermission("staff") || player.isOp()) {
+                response.append("• ").append(player.getName()).append("\n");
+                hasStaff = true;
+            }
+        }
+        if (!hasStaff) {
+            response.append("❌ Администрации онлайн нет.");
+        }
+        sendMessage(chatId, response.toString());
     }
 
     // --- ПРИВЕТСТВИЕ ---
@@ -246,106 +341,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, welcome);
     }
 
-    // --- ИСТОРИЯ НАКАЗАНИЙ (shist/hist) ---
-    private void handleHistory(long chatId, String playerName) {
-        // Проверяем, зарегистрирован ли игрок
-        if (!playerManager.isRegistered(playerName)) {
-            sendMessage(chatId, "❌ Игрок " + playerName + " не зарегистрирован в системе.");
-            return;
-        }
-
-        // Получаем логи для игрока (за последние 30 дней)
-        List<CommandLogger.LogEntry> logs = commandLogger.getLogs(playerName, 30);
-        
-        // Фильтруем только команды наказаний
-        List<String> punishments = new ArrayList<>();
-        String[] punishCommands = {"ban", "mute", "warn", "kick", "jail", "tempban", "tempmute"};
-        
-        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
-        sdf.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
-        
-        for (CommandLogger.LogEntry entry : logs) {
-            String cmd = entry.command.toLowerCase();
-            for (String pCmd : punishCommands) {
-                if (cmd.startsWith("/" + pCmd) || cmd.startsWith(pCmd)) {
-                    punishments.add("• " + sdf.format(new Date()) + " → " + entry.command);
-                    break;
-                }
-            }
-        }
-
-        if (punishments.isEmpty()) {
-            sendMessage(chatId, "📋 История наказаний для " + playerName + ":\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ Наказаний не найдено.");
-            return;
-        }
-
-        // Формируем красивый ответ
-        StringBuilder response = new StringBuilder();
-        response.append("📋 История наказаний для ").append(playerName).append("\n");
-        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        
-        int count = 0;
-        for (String p : punishments) {
-            if (count >= 20) {
-                response.append("\n... и ещё ").append(punishments.size() - 20).append(" записей");
-                break;
-            }
-            response.append(p).append("\n");
-            count++;
-        }
-        
-        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        response.append("📊 Всего записей: ").append(punishments.size());
-
-        sendMessage(chatId, response.toString());
-    }
-
-    // --- СПИСОК БАНОВ (banlist) ---
-    private void handleBanList(long chatId) {
-        // Здесь нужна интеграция с плагином банов
-        // Пока просто выполняем команду на сервере
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "banlist");
-        });
-        
-        sendMessage(chatId, "📋 Список банов:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "⏳ Запрос выполняется...\n" +
-                "Результат отобразится в консоли сервера.");
-    }
-
-    // --- СПИСОК МУТОВ (mutelist) ---
-    private void handleMuteList(long chatId) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mutelist");
-        });
-        
-        sendMessage(chatId, "📋 Список мутов:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "⏳ Запрос выполняется...\n" +
-                "Результат отобразится в консоли сервера.");
-    }
-
-    // --- СПИСОК АДМИНИСТРАЦИИ (staff) ---
-    private void handleStaffList(long chatId) {
-        StringBuilder response = new StringBuilder();
-        response.append("👑 Администрация онлайн:\n");
-        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        
-        boolean hasStaff = false;
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.hasPermission("staff") || player.isOp()) {
-                response.append("• ").append(player.getName()).append("\n");
-                hasStaff = true;
-            }
-        }
-        
-        if (!hasStaff) {
-            response.append("❌ Администрации онлайн нет.");
-        }
-        
-        sendMessage(chatId, response.toString());
-    }
-
-    // --- ОТПРАВКА СООБЩЕНИЯ ---
     private void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
