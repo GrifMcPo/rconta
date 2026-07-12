@@ -205,7 +205,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon unban ---
+        // ==== !rcon unban (С ПРИЧИНОЙ) ====
         if (command.startsWith("unban ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
@@ -265,7 +265,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon unmute ---
+        // ==== !rcon unmute (С ПРИЧИНОЙ) ====
         if (command.startsWith("unmute ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
