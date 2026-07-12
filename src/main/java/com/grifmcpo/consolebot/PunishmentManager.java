@@ -1,6 +1,7 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -18,8 +19,6 @@ public class PunishmentManager {
     private FileConfiguration punishmentConfig;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     private final Pattern TIME_PATTERN = Pattern.compile("^\\d+[smhdwMy]$");
-    private final Map<String, Long> muteCache = new HashMap<>();
-    private final Map<String, Long> banCache = new HashMap<>();
 
     public PunishmentManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -79,8 +78,19 @@ public class PunishmentManager {
         }
     }
 
+    public String formatDate(String date) {
+        if (date == null) return "Неизвестно";
+        try {
+            SimpleDateFormat input = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            SimpleDateFormat output = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+            return output.format(input.parse(date));
+        } catch (Exception e) {
+            return date;
+        }
+    }
+
     // ========================================
-    // ==== БАНЫ ====
+    // ===== БАНЫ =====
     // ========================================
 
     public boolean isBanned(String playerName) {
@@ -88,7 +98,7 @@ public class PunishmentManager {
     }
 
     public String getBanReason(String playerName) {
-        return punishmentConfig.getString(playerName + ".bans.reason", "");
+        return punishmentConfig.getString(playerName + ".bans.reason", "Без причины");
     }
 
     public String getBanIssuer(String playerName) {
@@ -97,6 +107,10 @@ public class PunishmentManager {
 
     public String getBanDuration(String playerName) {
         return punishmentConfig.getString(playerName + ".bans.duration", "навсегда");
+    }
+
+    public String getBanDate(String playerName) {
+        return punishmentConfig.getString(playerName + ".bans.date", "");
     }
 
     public boolean banPlayer(String playerName, String issuer, String reason, String duration) {
@@ -112,16 +126,16 @@ public class PunishmentManager {
 
         addHistory(playerName, "ban", now, issuer, reason, duration);
         savePunishments();
-        banCache.put(playerName, System.currentTimeMillis() + getTimeInMillis(duration));
 
+        // Кикаем игрока с красивым сообщением
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline()) {
-            String timeStr = duration.equals("навсегда") ? "навсегда" : duration;
-            player.kickPlayer("§cВы забанены!\n§fПричина: §e" + reason + "\n§fСрок: §e" + timeStr + "\n§fВыдал: §e" + issuer);
+            String kickMessage = getBanKickMessage(playerName);
+            player.kickPlayer(kickMessage);
         }
 
-        // Отправляем сообщение в чат
-        broadcastMessage("ban", playerName, issuer, reason, duration);
+        // Сообщение в чат для всех
+        broadcastPunishment("ban", playerName, issuer, reason, duration);
         return true;
     }
 
@@ -132,14 +146,30 @@ public class PunishmentManager {
         punishmentConfig.set(playerName + ".bans.active", false);
         addHistory(playerName, "unban", now, issuer, "Снятие бана", "навсегда");
         savePunishments();
-        banCache.remove(playerName);
 
-        broadcastUnbanMessage("ban", playerName, issuer);
+        broadcastUnpunishment("ban", playerName, issuer);
         return true;
     }
 
+    public String getBanKickMessage(String playerName) {
+        String reason = getBanReason(playerName);
+        String issuer = getBanIssuer(playerName);
+        String duration = getBanDuration(playerName);
+        String date = getBanDate(playerName);
+        String isPermanent = duration.equals("навсегда") ? "Да" : "Нет";
+        String isIpBan = "Нет";
+
+        return ChatColor.RED + "" + ChatColor.BOLD + "У вас имеется активный бан!\n" +
+                ChatColor.RED + "Причина: " + ChatColor.WHITE + reason + "\n" +
+                ChatColor.RED + "Дата выдачи: " + ChatColor.WHITE + formatDate(date) + "\n" +
+                ChatColor.RED + "Дата снятия: " + ChatColor.WHITE + (duration.equals("навсегда") ? "Никогда" : "Через " + duration) + "\n" +
+                ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer + "\n" +
+                ChatColor.RED + "Навсегда: " + ChatColor.WHITE + isPermanent + "\n" +
+                ChatColor.RED + "По айпи: " + ChatColor.WHITE + isIpBan;
+    }
+
     // ========================================
-    // ==== МУТЫ ====
+    // ===== МУТЫ =====
     // ========================================
 
     public boolean isMuted(String playerName) {
@@ -147,7 +177,7 @@ public class PunishmentManager {
     }
 
     public String getMuteReason(String playerName) {
-        return punishmentConfig.getString(playerName + ".mutes.reason", "");
+        return punishmentConfig.getString(playerName + ".mutes.reason", "Без причины");
     }
 
     public String getMuteIssuer(String playerName) {
@@ -156,6 +186,10 @@ public class PunishmentManager {
 
     public String getMuteDuration(String playerName) {
         return punishmentConfig.getString(playerName + ".mutes.duration", "навсегда");
+    }
+
+    public String getMuteDate(String playerName) {
+        return punishmentConfig.getString(playerName + ".mutes.date", "");
     }
 
     public boolean mutePlayer(String playerName, String issuer, String reason, String duration) {
@@ -171,18 +205,15 @@ public class PunishmentManager {
 
         addHistory(playerName, "mute", now, issuer, reason, duration);
         savePunishments();
-        muteCache.put(playerName, System.currentTimeMillis() + getTimeInMillis(duration));
 
+        // Сообщение игроку
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline()) {
-            String timeStr = duration.equals("навсегда") ? "навсегда" : duration;
-            player.sendMessage("§cВы замучены!");
-            player.sendMessage("§fПричина: §e" + reason);
-            player.sendMessage("§fСрок: §e" + timeStr);
-            player.sendMessage("§fВыдал: §e" + issuer);
+            player.sendMessage(getMuteMessage(playerName));
         }
 
-        broadcastMessage("mute", playerName, issuer, reason, duration);
+        // Сообщение в чат для всех
+        broadcastPunishment("mute", playerName, issuer, reason, duration);
         return true;
     }
 
@@ -193,19 +224,37 @@ public class PunishmentManager {
         punishmentConfig.set(playerName + ".mutes.active", false);
         addHistory(playerName, "unmute", now, issuer, "Снятие мута", "навсегда");
         savePunishments();
-        muteCache.remove(playerName);
 
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline()) {
-            player.sendMessage("§aС вас снят мут!");
+            player.sendMessage(ChatColor.GREEN + "С вас снят мут!");
         }
 
-        broadcastUnbanMessage("mute", playerName, issuer);
+        broadcastUnpunishment("mute", playerName, issuer);
         return true;
     }
 
+    public List<String> getMuteMessage(String playerName) {
+        String reason = getMuteReason(playerName);
+        String issuer = getMuteIssuer(playerName);
+        String duration = getMuteDuration(playerName);
+        String date = getMuteDate(playerName);
+        String isPermanent = duration.equals("навсегда") ? "Да" : "Нет";
+        String isIpMute = "Нет";
+
+        List<String> messages = new ArrayList<>();
+        messages.add(ChatColor.RED + "" + ChatColor.BOLD + "У вас есть активный мут!");
+        messages.add(ChatColor.RED + "Причина: " + ChatColor.WHITE + reason);
+        messages.add(ChatColor.RED + "Дата выдачи: " + ChatColor.WHITE + formatDate(date));
+        messages.add(ChatColor.RED + "Дата снятия: " + ChatColor.WHITE + (duration.equals("навсегда") ? "Никогда" : "Через " + duration));
+        messages.add(ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer);
+        messages.add(ChatColor.RED + "Навсегда: " + ChatColor.WHITE + isPermanent);
+        messages.add(ChatColor.RED + "IP мут: " + ChatColor.WHITE + isIpMute);
+        return messages;
+    }
+
     // ========================================
-    // ==== КИК ====
+    // ===== КИК =====
     // ========================================
 
     public boolean kickPlayer(String playerName, String issuer, String reason) {
@@ -216,14 +265,16 @@ public class PunishmentManager {
         addHistory(playerName, "kick", now, issuer, reason, "навсегда");
         savePunishments();
 
-        player.kickPlayer("§cВы кикнуты!\n§fПричина: §e" + reason + "\n§fВыдал: §e" + issuer);
+        player.kickPlayer(ChatColor.RED + "Вы кикнуты!\n" +
+                ChatColor.RED + "Причина: " + ChatColor.WHITE + reason + "\n" +
+                ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer);
 
-        broadcastMessage("kick", playerName, issuer, reason, "навсегда");
+        broadcastPunishment("kick", playerName, issuer, reason, "навсегда");
         return true;
     }
 
     // ========================================
-    // ==== ИСТОРИЯ ====
+    // ===== ИСТОРИЯ =====
     // ========================================
 
     private void addHistory(String playerName, String type, String date, String issuer, String reason, String duration) {
@@ -257,18 +308,14 @@ public class PunishmentManager {
                     case "kick": action = "кикнут"; break;
                     default: action = type;
                 }
-                String shortDate = date;
-                if (date != null && date.length() >= 16) {
-                    shortDate = date.substring(8, 10) + "." + date.substring(5, 7) + "." + date.substring(0, 4) + " " + date.substring(11, 16);
-                }
-                history.add("• " + shortDate + " → " + issuer + " " + action + " " + playerName + " (" + reason + ") [" + duration + "]");
+                history.add("• " + formatDate(date) + " → " + issuer + " " + action + " " + playerName + " (" + reason + ") [" + duration + "]");
             }
         }
         return history;
     }
 
     // ========================================
-    // ==== СПИСКИ ====
+    // ===== СПИСКИ =====
     // ========================================
 
     public List<String> getBanList() {
@@ -296,10 +343,10 @@ public class PunishmentManager {
     }
 
     // ========================================
-    // ==== КРАСИВЫЕ СООБЩЕНИЯ В ЧАТ ====
+    // ===== КРАСИВЫЕ СООБЩЕНИЯ В ЧАТ (КАК НА HYPE) =====
     // ========================================
 
-    private void broadcastMessage(String type, String playerName, String issuer, String reason, String duration) {
+    private void broadcastPunishment(String type, String playerName, String issuer, String reason, String duration) {
         String actionName = "";
         String color = "";
         switch (type) {
@@ -310,23 +357,18 @@ public class PunishmentManager {
         }
 
         String timeStr = duration.equals("навсегда") ? "навсегда" : duration;
-        String message = color + "✦ " + issuer + " §f" + actionName + " игрока §a" + playerName;
-        if (!type.equals("kick")) message += " §fна срок §b" + timeStr;
-        if (!reason.isEmpty()) message += " §fпо причине: §6" + reason;
-
-        message = "§8§m----------------------------§r\n" + message + "\n§8§m----------------------------§r";
+        String message = "§fИгрок §9" + issuer + " §f" + actionName + " §c" + playerName + " §fна §b" + timeStr + " §fпо причине: §7" + reason;
         Bukkit.broadcastMessage(message);
     }
 
-    private void broadcastUnbanMessage(String type, String playerName, String issuer) {
+    private void broadcastUnpunishment(String type, String playerName, String issuer) {
         String actionName = type.equals("ban") ? "разбанен" : "размучен";
-        String message = "§a✦ " + issuer + " §f" + actionName + " игрока §a" + playerName;
-        message = "§8§m----------------------------§r\n" + message + "\n§8§m----------------------------§r";
+        String message = "§fИгрок §9" + issuer + " §f" + actionName + " §a" + playerName;
         Bukkit.broadcastMessage(message);
     }
 
     // ========================================
-    // ==== АВТОСНЯТИЕ ====
+    // ===== АВТОСНЯТИЕ =====
     // ========================================
 
     private void startAutoUnmuteTask() {
@@ -337,16 +379,16 @@ public class PunishmentManager {
                     String duration = punishmentConfig.getString(key + ".mutes.duration", "навсегда");
                     if (!duration.equals("навсегда") && isTimeExpired(date, duration)) {
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            unmutePlayer(key, "Система (авто)");
+                            unmutePlayer(key, "Система");
                             Player player = Bukkit.getPlayerExact(key);
                             if (player != null && player.isOnline()) {
-                                player.sendMessage("§aВаш мут истёк!");
+                                player.sendMessage(ChatColor.GREEN + "Ваш мут истёк!");
                             }
                         });
                     }
                 }
             }
-        }, 0L, 20L * 60); // каждую минуту
+        }, 0L, 20L * 60);
     }
 
     private void startAutoUnbanTask() {
@@ -357,26 +399,23 @@ public class PunishmentManager {
                     String duration = punishmentConfig.getString(key + ".bans.duration", "навсегда");
                     if (!duration.equals("навсегда") && isTimeExpired(date, duration)) {
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            unbanPlayer(key, "Система (авто)");
+                            unbanPlayer(key, "Система");
                         });
                     }
                 }
             }
-        }, 0L, 20L * 60); // каждую минуту
+        }, 0L, 20L * 60);
     }
 
     // ========================================
-    // ==== ПРОВЕРКИ ====
+    // ===== ПРОВЕРКИ =====
     // ========================================
 
     public void checkOnJoin(Player player) {
         String name = player.getName();
 
         if (isBanned(name)) {
-            String reason = punishmentConfig.getString(name + ".bans.reason", "Без причины");
-            String issuer = punishmentConfig.getString(name + ".bans.issuer", "Unknown");
-            String duration = punishmentConfig.getString(name + ".bans.duration", "навсегда");
-            player.kickPlayer("§cВы забанены!\n§fПричина: §e" + reason + "\n§fСрок: §e" + duration + "\n§fВыдал: §e" + issuer);
+            player.kickPlayer(getBanKickMessage(name));
             return;
         }
 
@@ -384,15 +423,13 @@ public class PunishmentManager {
             String date = punishmentConfig.getString(name + ".mutes.date");
             String duration = punishmentConfig.getString(name + ".mutes.duration", "навсегда");
             if (!duration.equals("навсегда") && isTimeExpired(date, duration)) {
-                unmutePlayer(name, "Система (авто)");
-                player.sendMessage("§aВаш мут истёк!");
+                unmutePlayer(name, "Система");
+                player.sendMessage(ChatColor.GREEN + "Ваш мут истёк!");
                 return;
             }
-            String reason = punishmentConfig.getString(name + ".mutes.reason", "Без причины");
-            String issuer = punishmentConfig.getString(name + ".mutes.issuer", "Unknown");
-            player.sendMessage("§cВы замучены!");
-            player.sendMessage("§fПричина: §e" + reason);
-            player.sendMessage("§fВыдал: §e" + issuer);
+            for (String msg : getMuteMessage(name)) {
+                player.sendMessage(msg);
+            }
         }
     }
 
@@ -401,9 +438,12 @@ public class PunishmentManager {
             String date = punishmentConfig.getString(player.getName() + ".mutes.date");
             String duration = punishmentConfig.getString(player.getName() + ".mutes.duration", "навсегда");
             if (!duration.equals("навсегда") && isTimeExpired(date, duration)) {
-                unmutePlayer(player.getName(), "Система (авто)");
-                player.sendMessage("§aВаш мут истёк!");
+                unmutePlayer(player.getName(), "Система");
+                player.sendMessage(ChatColor.GREEN + "Ваш мут истёк!");
                 return true;
+            }
+            for (String msg : getMuteMessage(player.getName())) {
+                player.sendMessage(msg);
             }
             return false;
         }
