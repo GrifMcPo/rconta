@@ -38,7 +38,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         logsCommand = new LogsCommand(this);
         commandExecutor = new CommandExecutor(this);
 
-        // Регистрируем слушатель команд
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger), this);
 
         try {
@@ -57,9 +56,11 @@ public class TelegramConsoleBot extends JavaPlugin {
         if (commandLogger != null) {
             commandLogger.saveLogs();
         }
+        if (commandExecutor != null) {
+            commandExecutor.close();
+        }
     }
 
-    // --- ЗАГРУЗКА АДМИНОВ ---
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
         if (!adminsFile.exists()) {
