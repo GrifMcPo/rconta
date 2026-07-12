@@ -16,10 +16,9 @@ public class AuthManager {
     private final JavaPlugin plugin;
     private File authFile;
     private FileConfiguration authConfig;
-    private final Map<String, String> pendingAuth = new ConcurrentHashMap<>(); // UUID -> код
-    private final Map<String, Long> pendingAuthTime = new ConcurrentHashMap<>(); // UUID -> время
+    private final Map<String, String> pendingAuth = new ConcurrentHashMap<>();
+    private final Map<String, Long> pendingAuthTime = new ConcurrentHashMap<>();
     private final Map<UUID, String> frozenPlayers = new ConcurrentHashMap<>();
-    private final Map<String, String> pendingTelegramId = new ConcurrentHashMap<>(); // UUID -> telegramId (ожидание привязки)
 
     private static final long AUTH_TIMEOUT = 3 * 60 * 1000;
     private static final long SESSION_DURATION = 12 * 60 * 60 * 1000;
@@ -70,7 +69,7 @@ public class AuthManager {
         return hashPassword(password).equals(hash);
     }
 
-    // ===== РЕГИСТРАЦИЯ =====
+    // ===== РЕГИСТРАЦИЯ (3 аргумента) =====
     public boolean registerPlayer(String playerName, String telegramId, String ip) {
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
         if (uuid == null) return false;
