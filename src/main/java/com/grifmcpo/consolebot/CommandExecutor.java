@@ -5,7 +5,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class CommandExecutor {
 
@@ -26,8 +29,8 @@ public class CommandExecutor {
         this.port = plugin.getConfig().getInt("rcon.port", 25575);
         this.password = plugin.getConfig().getString("rcon.password");
 
-        // Подключаемся с задержкой через 3 секунды (чтобы RCON успел запуститься)
-        Bukkit.getScheduler().runTaskLater(plugin, this::connectRcon, 60L); // 60 тиков = 3 секунды
+        // Подключаемся с задержкой
+        Bukkit.getScheduler().runTaskLater(plugin, this::connectRcon, 60L);
     }
 
     private void connectRcon() {
@@ -37,34 +40,40 @@ public class CommandExecutor {
                 return;
             }
 
-            if (socket != null && !socket.isClosed()) {
-                return;
-            }
-
             plugin.getLogger().info("🔄 Подключение к RCON " + host + ":" + port + "...");
 
             socket = new Socket(host, port);
-            socket.setSoTimeout(5000);
+            socket.setSoTimeout(10000);
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
 
-            // Аутентификация
+            // --- АУТЕНТИФИКАЦИЯ (правильный протокол) ---
             int requestId = 1;
             byte[] body = password.getBytes("UTF-8");
-            int size = 10 + body.length;
-            out.writeInt(size);
-            out.writeInt(requestId);
-            out.writeInt(3);
-            out.writeShort(body.length);
-            out.write(body);
+            
+            // Формируем пакет: size (4 байта) + requestId (4) + type (4) + body (N) + \0\0
+            ByteBuffer packet = ByteBuffer.allocate(10 + body.length);
+            packet.order(ByteOrder.LITTLE_ENDIAN);
+            packet.putInt(10 + body.length); // size
+            packet.putInt(requestId);         // requestId
+            packet.putInt(3);                 // SERVERDATA_AUTH
+            packet.put(body);                 // body
+            packet.putShort((short) 0);       // 2 нулевых байта (завершение строки)
+
+            out.write(packet.array());
             out.flush();
 
+            // Читаем ответ
             int responseSize = in.readInt();
             int responseId = in.readInt();
             int responseType = in.readInt();
-            int responseBodyLength = in.readShort();
-            byte[] responseBody = new byte[responseBodyLength];
+            
+            // Читаем тело ответа
+            byte[] responseBody = new byte[responseSize - 8];
             in.readFully(responseBody);
+            
+            // Читаем завершающие нули
+            in.readShort();
 
             if (responseId == -1) {
                 plugin.getLogger().severe("❌ Ошибка аутентификации RCON! Неверный пароль.");
@@ -80,63 +89,70 @@ public class CommandExecutor {
             connected = false;
             plugin.getLogger().warning("❌ Ошибка подключения RCON: " + e.getMessage());
 
-            // Пробуем переподключиться
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
-                plugin.getLogger().info("🔄 Попытка переподключения " + reconnectAttempts + "/" + MAX_RECONNECT_ATTEMPTS + " через 5 секунд...");
+                plugin.getLogger().info("🔄 Попытка " + reconnectAttempts + "/" + MAX_RECONNECT_ATTEMPTS + " через 5 сек...");
                 Bukkit.getScheduler().runTaskLater(plugin, this::connectRcon, 100L);
             } else {
-                plugin.getLogger().warning("❌ Не удалось подключиться к RCON после " + MAX_RECONNECT_ATTEMPTS + " попыток. Команды будут выполняться через консоль.");
+                plugin.getLogger().warning("❌ RCON не подключён. Команды через консоль.");
             }
         }
     }
 
     public String executeCommand(String command, String senderName) {
-        // Проверяем соединение
+        // Если RCON не подключён — выполняем через консоль
         if (!connected || socket == null || socket.isClosed()) {
-            // Пробуем переподключиться
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
                 plugin.getLogger().info("🔄 Переподключение к RCON...");
                 Bukkit.getScheduler().runTaskAsynchronously(plugin, this::connectRcon);
             }
-            // Выполняем через консоль
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-            return "⚠️ RCON не подключён, команда выполнена через консоль";
+            return "⚠️ RCON не подключён, команда через консоль: " + command;
         }
 
         try {
+            // --- ОТПРАВКА КОМАНДЫ ---
             int requestId = 2;
             byte[] body = command.getBytes("UTF-8");
-            int size = 10 + body.length;
-            out.writeInt(size);
-            out.writeInt(requestId);
-            out.writeInt(2);
-            out.writeShort(body.length);
-            out.write(body);
+            
+            ByteBuffer packet = ByteBuffer.allocate(10 + body.length);
+            packet.order(ByteOrder.LITTLE_ENDIAN);
+            packet.putInt(10 + body.length);
+            packet.putInt(requestId);
+            packet.putInt(2); // SERVERDATA_EXECCOMMAND
+            packet.put(body);
+            packet.putShort((short) 0);
+
+            out.write(packet.array());
             out.flush();
 
+            // --- ЧТЕНИЕ ОТВЕТА ---
             int responseSize = in.readInt();
             int responseId = in.readInt();
             int responseType = in.readInt();
-            int responseBodyLength = in.readShort();
-            byte[] responseBody = new byte[responseBodyLength];
+            
+            byte[] responseBody = new byte[responseSize - 8];
             in.readFully(responseBody);
+            
+            // Читаем завершающие нули
+            in.readShort();
 
-            String response = new String(responseBody, "UTF-8");
+            String response = new String(responseBody, "UTF-8").trim();
 
-            // Читаем пустой пакет
+            // Читаем второй пакет (RCON всегда отправляет 2 пакета)
             try {
                 int emptySize = in.readInt();
-                in.readInt();
-                in.readInt();
-                int emptyBodyLen = in.readShort();
+                in.readInt(); // id
+                in.readInt(); // type
+                int emptyBodyLen = emptySize - 8;
                 if (emptyBodyLen > 0) {
                     byte[] emptyBody = new byte[emptyBodyLen];
                     in.readFully(emptyBody);
                 }
+                in.readShort();
             } catch (Exception e) {
-                // Игнорируем
+                // Игнорируем, если второго пакета нет
             }
 
             if (response == null || response.isEmpty()) {
@@ -144,11 +160,13 @@ public class CommandExecutor {
             }
             return response;
 
-        } catch (Exception e) {
+        } catch (IOException e) {
             plugin.getLogger().warning("❌ Ошибка выполнения команды: " + e.getMessage());
             connected = false;
-            // Пробуем переподключиться
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, this::connectRcon);
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            return "⚠️ Ошибка RCON, команда через консоль: " + command;
+        } catch (Exception e) {
+            plugin.getLogger().warning("❌ Ошибка: " + e.getMessage());
             return "❌ Ошибка: " + e.getMessage();
         }
     }
@@ -157,9 +175,7 @@ public class CommandExecutor {
         try {
             if (socket != null) socket.close();
             connected = false;
-        } catch (Exception e) {
-            // игнорируем
-        }
+        } catch (Exception e) {}
     }
 
     public void reconnect() {
