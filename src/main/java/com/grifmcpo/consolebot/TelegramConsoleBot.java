@@ -20,6 +20,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private LogsCommand logsCommand;
     private CommandExecutor commandExecutor;
     private PunishmentManager punishmentManager;
+    private AdminLogger adminLogger;
 
     @Override
     public void onEnable() {
@@ -38,9 +39,9 @@ public class TelegramConsoleBot extends JavaPlugin {
         commandLogger = new CommandLogger(this);
         logsCommand = new LogsCommand(this);
         commandExecutor = new CommandExecutor(this);
-        punishmentManager = new PunishmentManager(this);
+        adminLogger = new AdminLogger(this);
+        punishmentManager = new PunishmentManager(this, adminLogger);
 
-        // Исправлено: передаём только 2 аргумента
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
@@ -141,5 +142,9 @@ public class TelegramConsoleBot extends JavaPlugin {
 
     public PunishmentManager getPunishmentManager() {
         return punishmentManager;
+    }
+
+    public AdminLogger getAdminLogger() {
+        return adminLogger;
     }
 }
