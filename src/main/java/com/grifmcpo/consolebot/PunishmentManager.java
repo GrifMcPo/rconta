@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot;  
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -132,15 +132,18 @@ public class PunishmentManager {
         String chatMessage = ChatColor.WHITE + "Игрок " + ChatColor.BLUE + issuer + ChatColor.WHITE + " забанил " + ChatColor.RED + playerName + ChatColor.WHITE + " на " + ChatColor.AQUA + timeStr + ChatColor.WHITE + " по причине: " + ChatColor.GRAY + reason;
         Bukkit.broadcastMessage(chatMessage);
 
-        // ---- КИКАЕМ ИГРОКА ----
+        // ---- КИКАЕМ ИГРОКА В ГЛАВНОМ ПОТОКЕ ----
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline()) {
-            String kickMessage = ChatColor.RED + "" + ChatColor.BOLD + "У вас имеется активный бан!\n" +
+            final String kickMessage = ChatColor.RED + "" + ChatColor.BOLD + "У вас имеется активный бан!\n" +
                     ChatColor.RED + "Причина: " + ChatColor.WHITE + reason + "\n" +
                     ChatColor.RED + "Дата выдачи: " + ChatColor.WHITE + formatDate(now) + "\n" +
                     ChatColor.RED + "Дата снятия: " + ChatColor.WHITE + (duration.equals("навсегда") ? "Никогда" : "Через " + duration) + "\n" +
                     ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer;
-            player.kickPlayer(kickMessage);
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                player.kickPlayer(kickMessage);
+            });
         }
 
         return true;
@@ -248,9 +251,13 @@ public class PunishmentManager {
         addHistory(playerName, "kick", now, issuer, reason, "навсегда");
         savePunishments();
 
-        player.kickPlayer(ChatColor.RED + "Вы кикнуты!\n" +
+        final String kickMessage = ChatColor.RED + "Вы кикнуты!\n" +
                 ChatColor.RED + "Причина: " + ChatColor.WHITE + reason + "\n" +
-                ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer);
+                ChatColor.RED + "Выдал: " + ChatColor.WHITE + issuer;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            player.kickPlayer(kickMessage);
+        });
 
         String chatMessage = ChatColor.WHITE + "Игрок " + ChatColor.BLUE + issuer + ChatColor.WHITE + " выгнал " + ChatColor.RED + playerName + ChatColor.WHITE + " по причине: " + ChatColor.GRAY + reason;
         Bukkit.broadcastMessage(chatMessage);
@@ -328,7 +335,7 @@ public class PunishmentManager {
     }
 
     // ========================================
-    // ===== АВТОСНЯТИЕ (БЕЗ СООБЩЕНИЙ) =====
+    // ===== АВТОСНЯТИЕ (БЕЗ СООБЩЕНИЙ В ЧАТ) =====
     // ========================================
 
     private void startAutoUnmuteTask() {
