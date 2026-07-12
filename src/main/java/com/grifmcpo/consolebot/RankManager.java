@@ -39,38 +39,46 @@ public class RankManager {
         userRanks.clear();
 
         for (String rankName : rankConfig.getKeys(false)) {
+            if (rankName.equals("users")) continue;
             Rank rank = new Rank(rankName);
+            
             List<Map<?, ?>> permissions = rankConfig.getMapList(rankName + ".permissions");
             for (Map<?, ?> perm : permissions) {
                 String command = (String) perm.get("command");
                 String limit = (String) perm.get("limit");
-                rank.addPermission(command, limit != null ? limit : "навсегда");
+                if (command != null) {
+                    rank.addPermission(command, limit != null ? limit : "навсегда");
+                }
             }
+            
+            List<Long> users = rankConfig.getLongList(rankName + ".users");
+            for (long id : users) {
+                rank.addUser(id);
+                userRanks.put(id, rankName);
+            }
+            
             ranks.put(rankName, rank);
         }
 
-        // Загружаем пользователей
-        for (String rankName : ranks.keySet()) {
-            List<Long> users = rankConfig.getLongList(rankName + ".users");
-            for (long id : users) {
-                userRanks.put(id, rankName);
-            }
-        }
-
-        plugin.getLogger().info("✅ Загружено рангов: " + ranks.size());
+        plugin.getLogger().info("✅ Загружено рангов: " + ranks.size() + ", пользователей: " + userRanks.size());
     }
 
     public void saveRanks() {
         for (String rankName : ranks.keySet()) {
             Rank rank = ranks.get(rankName);
-            rankConfig.set(rankName + ".permissions", rank.getPermissions());
+            rankConfig.set(rankName + ".permissions", rank.getPermissionsList());
             rankConfig.set(rankName + ".users", new ArrayList<>(rank.getUsers()));
         }
         try {
             rankConfig.save(rankFile);
         } catch (Exception e) {
-            plugin.getLogger().severe("❌ Ошибка сохранения ranks.yml");
+            plugin.getLogger().severe("❌ Ошибка сохранения ranks.yml: " + e.getMessage());
         }
+    }
+
+    // ===== ТЕХРАБОТЫ =====
+    public boolean isTechWork() {
+        return plugin.getConfig().getBoolean("maintenance", false);
     }
 
     // ===== РАНГИ =====
@@ -85,9 +93,11 @@ public class RankManager {
 
     public boolean deleteRank(String name) {
         if (!ranks.containsKey(name)) return false;
+        Rank rank = ranks.get(name);
+        for (long id : rank.getUsers()) {
+            userRanks.remove(id);
+        }
         ranks.remove(name);
-        // Удаляем пользователей из ранга
-        userRanks.entrySet().removeIf(entry -> entry.getValue().equals(name));
         rankConfig.set(name, null);
         saveRanks();
         return true;
@@ -112,6 +122,13 @@ public class RankManager {
     public boolean addUserToRank(String rankName, long telegramId) {
         Rank rank = ranks.get(rankName);
         if (rank == null) return false;
+        
+        String oldRank = userRanks.get(telegramId);
+        if (oldRank != null) {
+            Rank old = ranks.get(oldRank);
+            if (old != null) old.removeUser(telegramId);
+        }
+        
         rank.addUser(telegramId);
         userRanks.put(telegramId, rankName);
         saveRanks();
@@ -197,6 +214,17 @@ public class RankManager {
 
         public Map<String, String> getPermissions() {
             return permissions;
+        }
+
+        public List<Map<String, String>> getPermissionsList() {
+            List<Map<String, String>> list = new ArrayList<>();
+            for (Map.Entry<String, String> entry : permissions.entrySet()) {
+                Map<String, String> perm = new HashMap<>();
+                perm.put("command", entry.getKey());
+                perm.put("limit", entry.getValue());
+                list.add(perm);
+            }
+            return list;
         }
 
         public List<Long> getUsers() {
