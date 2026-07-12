@@ -22,6 +22,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private PunishmentManager punishmentManager;
     private AdminLogger adminLogger;
     private AuthManager authManager;
+    private TelegramBotHandler botHandler;
 
     @Override
     public void onEnable() {
@@ -44,13 +45,12 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         authManager = new AuthManager(this);
 
-        // Передаём authManager в CommandListener
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, authManager), this);
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, authManager, this), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            // Передаём authManager в TelegramBotHandler
-            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor, punishmentManager, authManager));
+            botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor, punishmentManager, authManager);
+            botsApi.registerBot(botHandler);
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
@@ -61,19 +61,13 @@ public class TelegramConsoleBot extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("❌ ConsoleBot выключен.");
-        if (commandLogger != null) {
-            commandLogger.saveLogs();
-        }
-        if (commandExecutor != null) {
-            commandExecutor.close();
-        }
+        if (commandLogger != null) commandLogger.saveLogs();
+        if (commandExecutor != null) commandExecutor.close();
     }
 
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
-        if (!adminsFile.exists()) {
-            saveResource("admins.yml", false);
-        }
+        if (!adminsFile.exists()) saveResource("admins.yml", false);
         reloadAdmins();
     }
 
@@ -106,53 +100,17 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    public Map<String, String> getAdmins() {
-        return admins;
-    }
-
-    public long getOwnerId() {
-        return ownerId;
-    }
-
-    public void addAdmin(String telegramId, String playerName) {
-        admins.put(telegramId, playerName);
-        saveAdmins();
-    }
-
-    public void removeAdmin(String telegramId) {
-        admins.remove(telegramId);
-        saveAdmins();
-    }
-
-    public boolean isAdmin(long telegramId) {
-        return admins.containsKey(String.valueOf(telegramId));
-    }
-
-    public String getCustomSender(long telegramId) {
-        return admins.get(String.valueOf(telegramId));
-    }
-
-    public PlayerManager getPlayerManager() {
-        return playerManager;
-    }
-
-    public CommandLogger getCommandLogger() {
-        return commandLogger;
-    }
-
-    public CommandExecutor getCommandExecutor() {
-        return commandExecutor;
-    }
-
-    public PunishmentManager getPunishmentManager() {
-        return punishmentManager;
-    }
-
-    public AdminLogger getAdminLogger() {
-        return adminLogger;
-    }
-
-    public AuthManager getAuthManager() {
-        return authManager;
-    }
+    public Map<String, String> getAdmins() { return admins; }
+    public long getOwnerId() { return ownerId; }
+    public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
+    public void removeAdmin(String telegramId) { admins.remove(telegramId); saveAdmins(); }
+    public boolean isAdmin(long telegramId) { return admins.containsKey(String.valueOf(telegramId)); }
+    public String getCustomSender(long telegramId) { return admins.get(String.valueOf(telegramId)); }
+    public PlayerManager getPlayerManager() { return playerManager; }
+    public CommandLogger getCommandLogger() { return commandLogger; }
+    public CommandExecutor getCommandExecutor() { return commandExecutor; }
+    public PunishmentManager getPunishmentManager() { return punishmentManager; }
+    public AdminLogger getAdminLogger() { return adminLogger; }
+    public AuthManager getAuthManager() { return authManager; }
+    public TelegramBotHandler getBotHandler() { return botHandler; }
 }
