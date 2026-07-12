@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -153,54 +153,102 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /banlist ---
-        if (command.equalsIgnoreCase("/banlist")) {
+        // --- /banlist (с пагинацией) ---
+        if (command.equalsIgnoreCase("/banlist") || command.startsWith("/banlist ")) {
             event.setCancelled(true);
-            List<String> bans = punishmentManager.getBanList();
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> bans = punishmentManager.getBanList(page, pageSize);
+            List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+            int totalPages = punishmentManager.getTotalPages(allBans.size(), pageSize);
+
             if (bans.isEmpty()) {
                 player.sendMessage("§eБанов нет.");
             } else {
-                player.sendMessage("§6=== Список банов (" + bans.size() + ") ===");
+                player.sendMessage("§6=== Список банов (Страница " + page + "/" + totalPages + ") ===");
                 for (String ban : bans) {
                     player.sendMessage("§f" + ban);
                 }
-            }
-            return;
-        }
-
-        // --- /mutelist ---
-        if (command.equalsIgnoreCase("/mutelist")) {
-            event.setCancelled(true);
-            List<String> mutes = punishmentManager.getMuteList();
-            if (mutes.isEmpty()) {
-                player.sendMessage("§eМутов нет.");
-            } else {
-                player.sendMessage("§6=== Список мутов (" + mutes.size() + ") ===");
-                for (String mute : mutes) {
-                    player.sendMessage("§f" + mute);
+                if (totalPages > 1) {
+                    player.sendMessage("§7Используй: /banlist " + (page + 1) + " для следующей страницы");
                 }
             }
             return;
         }
 
-        // --- /shist /hist ---
+        // --- /mutelist (с пагинацией) ---
+        if (command.equalsIgnoreCase("/mutelist") || command.startsWith("/mutelist ")) {
+            event.setCancelled(true);
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
+            List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+            int totalPages = punishmentManager.getTotalPages(allMutes.size(), pageSize);
+
+            if (mutes.isEmpty()) {
+                player.sendMessage("§eМутов нет.");
+            } else {
+                player.sendMessage("§6=== Список мутов (Страница " + page + "/" + totalPages + ") ===");
+                for (String mute : mutes) {
+                    player.sendMessage("§f" + mute);
+                }
+                if (totalPages > 1) {
+                    player.sendMessage("§7Используй: /mutelist " + (page + 1) + " для следующей страницы");
+                }
+            }
+            return;
+        }
+
+        // --- /shist /hist (с пагинацией) ---
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
             if (parts.length < 2) {
-                player.sendMessage("§cИспользуй: /shist <ник>");
+                player.sendMessage("§cИспользуй: /shist <ник> [страница]");
                 return;
             }
             String target = parts[1];
-            List<String> history = punishmentManager.getHistory(target);
+            int page = 1;
+            if (parts.length > 2) {
+                try { page = Integer.parseInt(parts[2]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
 
-            if (history.isEmpty()) {
+            List<PunishmentManager.HistoryEntry> allHistory = punishmentManager.getHistory(target);
+            List<String> formattedHistory = new java.util.ArrayList<>();
+            for (PunishmentManager.HistoryEntry entry : allHistory) {
+                String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
+                String status = "❓";
+                if (entry.type.equals("ban")) status = punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]";
+                else if (entry.type.equals("mute")) status = punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]";
+                else status = "[Истек]";
+                formattedHistory.add(" - " + timeAgo + " -\n   " + target + " был " + entry.getActionName() +
+                        " на " + entry.duration + " " +
+                        entry.issuer + ": " + entry.reason + " " + status);
+            }
+
+            List<String> pageItems = paginate(formattedHistory, page, pageSize);
+            int totalPages = (int) Math.ceil((double) formattedHistory.size() / pageSize);
+
+            if (pageItems.isEmpty()) {
                 player.sendMessage("§eИстория для " + target + " пуста.");
             } else {
-                player.sendMessage("§6=== История наказаний для " + target + " (" + history.size() + ") ===");
-                for (String entry : history) {
+                player.sendMessage("§6=== История наказаний для " + target + " (Страница " + page + "/" + totalPages + ") ===");
+                for (String entry : pageItems) {
                     player.sendMessage("§f" + entry);
                 }
+                if (totalPages > 1) {
+                    player.sendMessage("§7Используй: /shist " + target + " " + (page + 1) + " для следующей страницы");
+                }
+                player.sendMessage("§7Всего записей: " + formattedHistory.size());
             }
             return;
         }
@@ -220,6 +268,18 @@ public class CommandListener implements Listener {
         }
     }
 
+    // ===== ПАГИНАЦИЯ =====
+    private List<String> paginate(List<String> items, int page, int pageSize) {
+        int start = (page - 1) * pageSize;
+        int end = Math.min(start + pageSize, items.size());
+        if (start >= items.size() || start < 0) return new java.util.ArrayList<>();
+        return items.subList(start, end);
+    }
+
+    // ========================================
+    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
+    // ========================================
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -232,6 +292,10 @@ public class CommandListener implements Listener {
             player.sendMessage("§fВыдал: §e" + issuer);
         }
     }
+
+    // ========================================
+    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
+    // ========================================
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
