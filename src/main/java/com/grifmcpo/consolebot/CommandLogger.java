@@ -4,7 +4,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -19,6 +18,8 @@ public class CommandLogger {
 
     public CommandLogger(JavaPlugin plugin) {
         this.plugin = plugin;
+        dateFormat.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
+        fileDateFormat.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
         loadLogs();
     }
 
@@ -27,7 +28,6 @@ public class CommandLogger {
         LogEntry entry = new LogEntry(timestamp, playerName, command);
         logCache.add(entry);
 
-        // Сохраняем, если накопилось много
         if (logCache.size() >= 100) {
             saveLogs();
         }
@@ -53,7 +53,6 @@ public class CommandLogger {
     }
 
     private void loadLogs() {
-        // Загружаем логи за последние 5 дней в кэш
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) return;
 
@@ -75,7 +74,6 @@ public class CommandLogger {
             }
         }
 
-        // Оставляем только последние maxLogs записей
         if (logCache.size() > maxLogs) {
             logCache.subList(0, logCache.size() - maxLogs).clear();
         }
@@ -84,6 +82,7 @@ public class CommandLogger {
     public List<LogEntry> getLogs(String playerName, int days) {
         Date cutoff = new Date(System.currentTimeMillis() - days * 24L * 60 * 60 * 1000);
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        sdf.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
 
         return logCache.stream()
                 .filter(entry -> {
@@ -94,7 +93,7 @@ public class CommandLogger {
                         return false;
                     }
                 })
-                .sorted((a, b) -> b.timestamp.compareTo(a.timestamp)) // новые сверху
+                .sorted((a, b) -> b.timestamp.compareTo(a.timestamp))
                 .collect(Collectors.toList());
     }
 
