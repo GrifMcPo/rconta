@@ -8,6 +8,7 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -15,10 +16,12 @@ public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
+    private final AuthManager authManager;
 
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, AuthManager authManager) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
+        this.authManager = authManager;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -27,6 +30,57 @@ public class CommandListener implements Listener {
         String command = event.getMessage().toLowerCase();
 
         commandLogger.logCommand(player.getName(), event.getMessage());
+
+        // ============================================
+        // ==== ПРОВЕРКА: ЗАМОРОЖЕН ЛИ ИГРОК =====
+        // ============================================
+
+        if (authManager.isFrozen(player)) {
+            // Разрешаем только /code и /login
+            if (!command.startsWith("/code ") && !command.startsWith("/login ")) {
+                event.setCancelled(true);
+                player.sendMessage("§e🔐 Сначала подтвердите вход!");
+                player.sendMessage("§e📝 Введите /code <код> или /login <код>");
+                return;
+            }
+        }
+
+        // ============================================
+        // ==== КОМАНДА /code (ввод кода в чате) =====
+        // ============================================
+
+        if (command.startsWith("/code ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                player.sendMessage("§cИспользуй: /code <код>");
+                return;
+            }
+            String code = parts[1];
+            String playerName = player.getName();
+            String ip = player.getAddress().getHostString();
+
+            if (authManager.verifyAuthCode(playerName, code)) {
+                if (!authManager.isRegistered(playerName)) {
+                    // Если не зарегистрирован — регистрируем с временным паролем
+                    String tempPassword = UUID.randomUUID().toString().substring(0, 8);
+                    if (authManager.registerPlayer(playerName, tempPassword, "0", ip)) {
+                        authManager.activateSession(playerName, ip);
+                        authManager.unfreezePlayer(player);
+                        player.sendMessage("§a✅ Аккаунт зарегистрирован и вход подтверждён!");
+                    } else {
+                        player.sendMessage("§c❌ Ошибка регистрации!");
+                    }
+                } else {
+                    authManager.activateSession(playerName, ip);
+                    authManager.unfreezePlayer(player);
+                    player.sendMessage("§a✅ Вход подтверждён!");
+                }
+            } else {
+                player.sendMessage("§c❌ Неверный код или код истёк. Попробуйте зайти заново.");
+            }
+            return;
+        }
 
         // ============================================
         // ==== КОМАНДЫ ДЛЯ ИГРОКОВ =====
@@ -162,8 +216,9 @@ public class CommandListener implements Listener {
                 try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
             }
             int pageSize = 10;
-            List<String> bans = punishmentManager.getBanList(page, pageSize);
+
             List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+            List<String> bans = punishmentManager.getBanList(page, pageSize);
             int totalPages = punishmentManager.getTotalPages(allBans.size(), pageSize);
 
             if (bans.isEmpty()) {
@@ -189,8 +244,9 @@ public class CommandListener implements Listener {
                 try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
             }
             int pageSize = 10;
-            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
+
             List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
             int totalPages = punishmentManager.getTotalPages(allMutes.size(), pageSize);
 
             if (mutes.isEmpty()) {
@@ -223,13 +279,18 @@ public class CommandListener implements Listener {
             int pageSize = 10;
 
             List<PunishmentManager.HistoryEntry> allHistory = punishmentManager.getHistory(target);
-            List<String> formattedHistory = new java.util.ArrayList<>();
+            List<String> formattedHistory = new ArrayList<>();
+
             for (PunishmentManager.HistoryEntry entry : allHistory) {
                 String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
-                String status = "❓";
-                if (entry.type.equals("ban")) status = punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]";
-                else if (entry.type.equals("mute")) status = punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]";
-                else status = "[Истек]";
+                String status;
+                if (entry.type.equals("ban")) {
+                    status = punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]";
+                } else if (entry.type.equals("mute")) {
+                    status = punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]";
+                } else {
+                    status = "[Истек]";
+                }
                 formattedHistory.add(" - " + timeAgo + " -\n   " + target + " был " + entry.getActionName() +
                         " на " + entry.duration + " " +
                         entry.issuer + ": " + entry.reason + " " + status);
@@ -268,12 +329,52 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ===== ПАГИНАЦИЯ =====
-    private List<String> paginate(List<String> items, int page, int pageSize) {
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, items.size());
-        if (start >= items.size() || start < 0) return new java.util.ArrayList<>();
-        return items.subList(start, end);
+    // ========================================
+    // ==== ОБРАБОТКА ВХОДА ИГРОКА =====
+    // ========================================
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        String playerName = player.getName();
+        String ip = player.getAddress().getHostString();
+
+        // Проверяем бан
+        punishmentManager.checkOnJoin(player);
+        if (!player.isOnline()) return;
+
+        // Проверяем регистрацию
+        if (!authManager.isRegistered(playerName)) {
+            // Не зарегистрирован — генерируем код
+            String code = authManager.generateAuthCode(playerName);
+            String telegramId = authManager.getTelegramId(playerName);
+
+            player.sendMessage("§e🔐 Для регистрации на сервере введите код:");
+            player.sendMessage("§e📝 Код: §b" + code);
+            player.sendMessage("§7Напишите боту в Telegram: /reg " + playerName + " " + code);
+            player.sendMessage("§7Или введите в чате: /code " + code);
+
+            authManager.freezePlayer(player);
+            return;
+        }
+
+        // Проверяем сессию
+        if (!authManager.validateSession(playerName, ip)) {
+            // Сессия невалидна — запрос подтверждения
+            String code = authManager.generateAuthCode(playerName);
+
+            player.sendMessage("§e🔐 Требуется подтверждение входа!");
+            player.sendMessage("§e📝 Код для входа: §b" + code);
+            player.sendMessage("§7Напишите боту в Telegram: /login " + code);
+            player.sendMessage("§7Или введите в чате: /code " + code);
+
+            authManager.freezePlayer(player);
+        } else {
+            // Вход разрешён
+            player.sendMessage("§a✅ Добро пожаловать на сервер!");
+            // Обновляем IP
+            authManager.updateIP(playerName, ip);
+        }
     }
 
     // ========================================
@@ -283,6 +384,15 @@ public class CommandListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
+
+        // Проверяем, заморожен ли игрок
+        if (authManager.isFrozen(player)) {
+            event.setCancelled(true);
+            player.sendMessage("§e🔐 Сначала подтвердите вход! Используйте /code <код>");
+            return;
+        }
+
+        // Проверяем мут
         if (!punishmentManager.canPlayerChat(player)) {
             event.setCancelled(true);
             String issuer = punishmentManager.getMuteIssuer(player.getName());
@@ -294,12 +404,13 @@ public class CommandListener implements Listener {
     }
 
     // ========================================
-    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
+    // ==== ВСПОМОГАТЕЛЬНЫЙ МЕТОД ПАГИНАЦИИ =====
     // ========================================
 
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        punishmentManager.checkOnJoin(player);
+    private List<String> paginate(List<String> items, int page, int pageSize) {
+        int start = (page - 1) * pageSize;
+        int end = Math.min(start + pageSize, items.size());
+        if (start >= items.size() || start < 0) return new ArrayList<>();
+        return items.subList(start, end);
     }
 }
