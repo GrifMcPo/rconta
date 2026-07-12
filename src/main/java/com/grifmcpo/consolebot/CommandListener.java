@@ -7,28 +7,19 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
-    private final AuthManager authManager;
-    private final TelegramConsoleBot plugin;
 
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, 
-                           AuthManager authManager, TelegramConsoleBot plugin) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
-        this.authManager = authManager;
-        this.plugin = plugin;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -38,49 +29,10 @@ public class CommandListener implements Listener {
 
         commandLogger.logCommand(player.getName(), event.getMessage());
 
-        // ===== ПРОВЕРКА: ЗАМОРОЖЕН ЛИ ИГРОК =====
-        if (authManager.isFrozen(player)) {
-            if (!command.startsWith("/code ")) {
-                event.setCancelled(true);
-                player.sendMessage("§e🔐 Сначала подтвердите вход!");
-                player.sendMessage("§e📝 Введите /code <код> или подтвердите в Telegram");
-                return;
-            }
-        }
+        // ============================================
+        // ==== КОМАНДЫ ДЛЯ ИГРОКОВ =====
+        // ============================================
 
-        // ===== КОМАНДА /code (ввод кода в чате) =====
-        if (command.startsWith("/code ")) {
-            event.setCancelled(true);
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                player.sendMessage("§cИспользуй: /code <код>");
-                return;
-            }
-            String code = parts[1];
-            String playerName = player.getName();
-            String ip = player.getAddress().getHostString();
-
-            if (authManager.verifyAuthCode(playerName, code)) {
-                if (!authManager.isRegistered(playerName)) {
-                    if (authManager.registerPlayer(playerName, "0", ip)) {
-                        authManager.activateSession(playerName, ip);
-                        authManager.unfreezePlayer(player);
-                        player.sendMessage("§a✅ Аккаунт зарегистрирован и вход подтверждён!");
-                    } else {
-                        player.sendMessage("§c❌ Ошибка регистрации!");
-                    }
-                } else {
-                    authManager.activateSession(playerName, ip);
-                    authManager.unfreezePlayer(player);
-                    player.sendMessage("§a✅ Вход подтверждён!");
-                }
-            } else {
-                player.sendMessage("§c❌ Неверный код или код истёк. Попробуйте зайти заново.");
-            }
-            return;
-        }
-
-        // ===== ОСТАЛЬНЫЕ КОМАНДЫ =====
         // --- /ban ---
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
@@ -309,7 +261,10 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ===== БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE =====
+        // ============================================
+        // ==== БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE =====
+        // ============================================
+
         String[] blocked = {"/ban", "/tempban", "/unban", "/mute", "/tempmute", "/unmute", "/kick", "/warn", "/unwarn", "/jail", "/unjail"};
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
@@ -321,108 +276,13 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ===== ОБРАБОТКА ВХОДА ИГРОКА (С ОТПРАВКОЙ КНОПОК В TELEGRAM) =====
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        String playerName = player.getName();
-        String ip = player.getAddress().getHostString();
+    // ========================================
+    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
+    // ========================================
 
-        punishmentManager.checkOnJoin(player);
-        if (!player.isOnline()) return;
-
-        if (!authManager.isRegistered(playerName)) {
-            String code = authManager.generateAuthCode(playerName);
-
-            player.sendMessage("§e🔐 Для регистрации на сервере введите код:");
-            player.sendMessage("§e📝 Код: §b" + code);
-            player.sendMessage("§7Напишите боту в Telegram: /reg " + playerName + " " + code);
-            player.sendMessage("§7Или введите в чате: /code " + code);
-
-            authManager.freezePlayer(player);
-            return;
-        }
-
-        String telegramId = authManager.getTelegramId(playerName);
-        if (telegramId == null || telegramId.isEmpty() || telegramId.equals("0")) {
-            player.kickPlayer("§cОшибка: Telegram ID не найден. Обратитесь к администратору.");
-            return;
-        }
-
-        if (!authManager.validateSession(playerName, ip)) {
-            player.sendMessage("§e🔐 Требуется подтверждение входа!");
-            player.sendMessage("§7Проверьте Telegram-бота для подтверждения.");
-
-            authManager.freezePlayer(player);
-
-            // Отправляем кнопки в Telegram
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                try {
-                    sendTelegramAuthButtons(telegramId, playerName, ip);
-                    player.sendMessage("§a📱 Запрос подтверждения отправлен в Telegram!");
-                } catch (Exception e) {
-                    player.sendMessage("§c❌ Ошибка отправки запроса в Telegram.");
-                }
-            });
-        } else {
-            player.sendMessage("§a✅ Добро пожаловать на сервер!");
-            authManager.updateIP(playerName, ip);
-        }
-    }
-
-    // ===== ОТПРАВКА КНОПОК В TELEGRAM =====
-    private void sendTelegramAuthButtons(String telegramId, String playerName, String ip) {
-        try {
-            SendMessage message = new SendMessage();
-            message.setChatId(telegramId);
-            message.setText("🔐 Подтверди вход на сервер:\n" +
-                    "👤 Игрок: " + playerName + "\n" +
-                    "🌐 IP: " + ip + "\n\n" +
-                    "Разрешить вход?");
-
-            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-            List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-            List<InlineKeyboardButton> row = new ArrayList<>();
-
-            InlineKeyboardButton allowBtn = new InlineKeyboardButton();
-            allowBtn.setText("✅ Разрешить");
-            allowBtn.setCallbackData("auth_allow_" + playerName);
-
-            InlineKeyboardButton denyBtn = new InlineKeyboardButton();
-            denyBtn.setText("❌ Запроетить");
-            denyBtn.setCallbackData("auth_deny_" + playerName);
-
-            row.add(allowBtn);
-            row.add(denyBtn);
-            rows.add(row);
-            markup.setKeyboard(rows);
-            message.setReplyMarkup(markup);
-
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                try {
-                    // Отправляем через зарегистрированного бота
-                    // Используем TelegramBotHandler, который уже зарегистрирован
-                    // Временно используем заглушку
-                    // В реальном коде нужно передать экземпляр бота
-                } catch (Exception e) {
-                    plugin.getLogger().warning("❌ Ошибка отправки кнопок в Telegram: " + e.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            plugin.getLogger().warning("❌ Ошибка создания кнопок: " + e.getMessage());
-        }
-    }
-
-    // ===== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
-
-        if (authManager.isFrozen(player)) {
-            event.setCancelled(true);
-            player.sendMessage("§e🔐 Сначала подтвердите вход! Используйте /code <код>");
-            return;
-        }
 
         if (!punishmentManager.canPlayerChat(player)) {
             event.setCancelled(true);
@@ -434,7 +294,20 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ===== ВСПОМОГАТЕЛЬНЫЙ МЕТОД ПАГИНАЦИИ =====
+    // ========================================
+    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
+    // ========================================
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        punishmentManager.checkOnJoin(player);
+    }
+
+    // ========================================
+    // ==== ВСПОМОГАТЕЛЬНЫЙ МЕТОД ПАГИНАЦИИ =====
+    // ========================================
+
     private List<String> paginate(List<String> items, int page, int pageSize) {
         int start = (page - 1) * pageSize;
         int end = Math.min(start + pageSize, items.size());
