@@ -16,8 +16,9 @@ public class PlayerManager {
     private final JavaPlugin plugin;
     private File authFile;
     private FileConfiguration authConfig;
-    private final Map<String, String> pendingRegistrations = new HashMap<>(); // ник -> пароль (временные данные)
+    private final Map<String, String> pendingCodes = new HashMap<>();
     private final Map<UUID, String> playerSessions = new HashMap<>();
+    private final Map<String, Long> codeTimestamps = new HashMap<>();
 
     public PlayerManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -44,9 +45,7 @@ public class PlayerManager {
         }
     }
 
-    // Регистрация через бота: /reg <ник> <пароль>
     public boolean registerPlayer(String playerName, String password, String telegramId) {
-        // Проверяем, не зарегистрирован ли уже
         if (isRegistered(playerName)) {
             return false;
         }
@@ -57,11 +56,10 @@ public class PlayerManager {
             if (player != null) {
                 uuid = player.getUniqueId();
             } else {
-                return false; // игрок не найден
+                return false;
             }
         }
 
-        // Сохраняем данные (пароль в открытом виде, но для простоты — можно захешировать позже)
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
         authConfig.set(playerName + ".password", password);
@@ -98,50 +96,4 @@ public class PlayerManager {
 
     public boolean checkPassword(String playerName, String password) {
         String savedPassword = authConfig.getString(playerName + ".password");
-        return savedPassword != null && savedPassword.equals(password);
-    }
-
-    public boolean isSessionValid(String playerName) {
-        long sessionTime = authConfig.getLong(playerName + ".sessionTime", 0);
-        return (System.currentTimeMillis() - sessionTime) < 12 * 60 * 60 * 1000;
-    }
-
-    public void refreshSession(String playerName) {
-        authConfig.set(playerName + ".sessionTime", System.currentTimeMillis());
-        saveAuthData();
-    }
-
-    public boolean isIPMatch(String playerName, String ip) {
-        String savedIP = authConfig.getString(playerName + ".ip");
-        return savedIP != null && savedIP.equals(ip);
-    }
-
-    public void updateIP(String playerName, String ip) {
-        authConfig.set(playerName + ".ip", ip);
-        saveAuthData();
-    }
-
-    private String getPlayerIP(String playerName) {
-        Player player = Bukkit.getPlayerExact(playerName);
-        if (player != null && player.getAddress() != null) {
-            return player.getAddress().getHostString();
-        }
-        return "0.0.0.0";
-    }
-
-    public void unregister(String playerName) {
-        authConfig.set(playerName, null);
-        playerSessions.entrySet().removeIf(entry -> {
-            String name = getPlayerNameByTelegram(entry.getValue());
-            return name != null && name.equals(playerName);
-        });
-        saveAuthData();
-    }
-
-    public void kickAccount(String playerName) {
-        Player player = Bukkit.getPlayerExact(playerName);
-        if (player != null && player.isOnline()) {
-            player.kickPlayer("§cАккаунт был исключен с бота");
-        }
-    }
-}
+        return savedPassword != null
