@@ -8,31 +8,37 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
-    private final TelegramConsoleBot plugin;
 
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, TelegramConsoleBot plugin) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
-        this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
         Player player = event.getPlayer();
         String command = event.getMessage().toLowerCase();
 
         commandLogger.logCommand(player.getName(), event.getMessage());
 
-        // --- КОМАНДА /ban ---
+        // ============================================
+        // ==== КОМАНДЫ ДЛЯ ИГРОКОВ (РАБОТАЮТ) =====
+        // ============================================
+
+        // --- /ban ---
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
             if (parts.length < 3) {
                 player.sendMessage("§cИспользуй: /ban <ник> [время] <причина>");
+                player.sendMessage("§7Пример: /ban pley1657 1d читы");
                 return;
             }
             String target = parts[1];
@@ -46,7 +52,7 @@ public class CommandListener implements Listener {
             }
 
             if (parts.length > start) {
-                reason = String.join(" ", java.util.Arrays.copyOfRange(parts, start, parts.length));
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
             } else {
                 reason = "Без причины";
             }
@@ -59,7 +65,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /unban ---
+        // --- /unban ---
         if (command.startsWith("/unban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -76,12 +82,13 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /mute ---
+        // --- /mute ---
         if (command.startsWith("/mute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
             if (parts.length < 3) {
                 player.sendMessage("§cИспользуй: /mute <ник> [время] <причина>");
+                player.sendMessage("§7Пример: /mute pley1657 1m спам");
                 return;
             }
             String target = parts[1];
@@ -95,7 +102,7 @@ public class CommandListener implements Listener {
             }
 
             if (parts.length > start) {
-                reason = String.join(" ", java.util.Arrays.copyOfRange(parts, start, parts.length));
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
             } else {
                 reason = "Без причины";
             }
@@ -108,7 +115,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /unmute ---
+        // --- /unmute ---
         if (command.startsWith("/unmute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -125,7 +132,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /kick ---
+        // --- /kick ---
         if (command.startsWith("/kick ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -134,7 +141,7 @@ public class CommandListener implements Listener {
                 return;
             }
             String target = parts[1];
-            String reason = String.join(" ", java.util.Arrays.copyOfRange(parts, 2, parts.length));
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
 
             if (punishmentManager.kickPlayer(target, player.getName(), reason)) {
                 player.sendMessage("§aИгрок " + target + " кикнут!");
@@ -144,7 +151,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /banlist ---
+        // --- /banlist ---
         if (command.equalsIgnoreCase("/banlist")) {
             event.setCancelled(true);
             List<String> bans = punishmentManager.getBanList();
@@ -159,7 +166,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /mutelist ---
+        // --- /mutelist ---
         if (command.equalsIgnoreCase("/mutelist")) {
             event.setCancelled(true);
             List<String> mutes = punishmentManager.getMuteList();
@@ -174,7 +181,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- КОМАНДА /shist ---
+        // --- /shist /hist ---
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -196,16 +203,24 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE ---
+        // ============================================
+        // ==== БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE =====
+        // ============================================
+
         String[] blocked = {"/ban", "/tempban", "/unban", "/mute", "/tempmute", "/unmute", "/kick", "/warn", "/unwarn", "/jail", "/unjail"};
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
                 event.setCancelled(true);
-                player.sendMessage("§c⛔ Эта команда отключена! Используй /ban, /mute, /kick");
+                player.sendMessage("§c⛔ Эта команда отключена!");
+                player.sendMessage("§7Используй: /ban, /mute, /kick, /unban, /unmute");
                 return;
             }
         }
     }
+
+    // ========================================
+    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
+    // ========================================
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
@@ -219,6 +234,10 @@ public class CommandListener implements Listener {
             player.sendMessage("§fВыдал: §e" + issuer);
         }
     }
+
+    // ========================================
+    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
+    // ========================================
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
