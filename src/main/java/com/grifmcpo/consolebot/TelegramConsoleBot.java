@@ -1,9 +1,6 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -21,6 +18,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private PlayerManager playerManager;
     private CommandLogger commandLogger;
     private LogsCommand logsCommand;
+    private CommandExecutor commandExecutor;
 
     @Override
     public void onEnable() {
@@ -38,13 +36,14 @@ public class TelegramConsoleBot extends JavaPlugin {
         playerManager = new PlayerManager(this);
         commandLogger = new CommandLogger(this);
         logsCommand = new LogsCommand(this);
+        commandExecutor = new CommandExecutor(this);
 
         // Регистрируем слушатель команд
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand));
+            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor));
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
@@ -60,6 +59,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
+    // --- ЗАГРУЗКА АДМИНОВ ---
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
         if (!adminsFile.exists()) {
@@ -130,5 +130,8 @@ public class TelegramConsoleBot extends JavaPlugin {
     public CommandLogger getCommandLogger() {
         return commandLogger;
     }
-}
 
+    public CommandExecutor getCommandExecutor() {
+        return commandExecutor;
+    }
+}
