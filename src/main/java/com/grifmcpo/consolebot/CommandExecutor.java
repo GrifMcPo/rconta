@@ -1,14 +1,15 @@
 package com.grifmcpo.consolebot;
 
-import com.github.johnnyjayjay.rcon.Rcon;
-import com.github.johnnyjayjay.rcon.RconBuilder;
+import net.johnewart.rconclient.RconClient;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
 
 public class CommandExecutor {
 
     private final JavaPlugin plugin;
-    private Rcon rcon;
+    private RconClient rcon;
 
     public CommandExecutor(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -26,10 +27,7 @@ public class CommandExecutor {
                 return;
             }
 
-            rcon = RconBuilder.open(host, port)
-                    .authenticate(password)
-                    .build();
-
+            rcon = new RconClient(host, port, password);
             plugin.getLogger().info("✅ RCON подключён к " + host + ":" + port);
         } catch (Exception e) {
             plugin.getLogger().severe("❌ Ошибка подключения RCON: " + e.getMessage());
@@ -43,12 +41,12 @@ public class CommandExecutor {
         }
 
         try {
-            String response = rcon.command(command);
+            String response = rcon.sendCommand(command);
             if (response == null || response.isEmpty()) {
                 return "✅ Команда выполнена (ответа нет)";
             }
             return response;
-        } catch (Exception e) {
+        } catch (IOException e) {
             plugin.getLogger().warning("❌ Ошибка выполнения команды: " + e.getMessage());
             return "❌ Ошибка: " + e.getMessage();
         }
@@ -57,7 +55,7 @@ public class CommandExecutor {
     public void close() {
         if (rcon != null) {
             try {
-                rcon.close();
+                rcon.disconnect();
             } catch (Exception e) {
                 // игнорируем
             }
