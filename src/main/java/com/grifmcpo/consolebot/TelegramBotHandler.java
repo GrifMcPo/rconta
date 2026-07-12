@@ -20,14 +20,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final PlayerManager playerManager;
     private final CommandLogger commandLogger;
     private final LogsCommand logsCommand;
+    private final CommandExecutor commandExecutor;
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
-                              CommandLogger commandLogger, LogsCommand logsCommand) {
+                              CommandLogger commandLogger, LogsCommand logsCommand, CommandExecutor commandExecutor) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
         this.commandLogger = commandLogger;
         this.logsCommand = logsCommand;
+        this.commandExecutor = commandExecutor;
     }
 
     @Override
@@ -187,7 +189,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- Выполнение команды ---
+        // --- ВЫПОЛНЕНИЕ КОМАНДЫ С ПОЛУЧЕНИЕМ ОТВЕТА ---
         String customSender = plugin.getCustomSender(userId);
         if (customSender == null && userId == plugin.getOwnerId()) {
             customSender = "RCON";
@@ -196,15 +198,22 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         final String finalCommand = command;
         final String finalCustomSender = customSender;
 
-        sendMessage(chatId, "✅ Команда выполняется: " + command);
+        // Отправляем сообщение о выполнении
+        sendMessage(chatId, "⏳ Выполняю: " + command);
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCommand);
-            sendCustomMessage(finalCommand, finalCustomSender);
+            // Получаем ответ от сервера
+            String response = commandExecutor.executeCommand(finalCommand, finalCustomSender);
+            
+            // Форматируем ответ
+            String formattedResponse = commandExecutor.formatResponse(finalCommand, response);
+            
+            // Отправляем ответ в Telegram
+            sendMessage(chatId, "📋 Ответ от сервера:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" + response + "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         });
     }
 
-    // --- ПРИВЕТСТВИЕ (красивое) ---
+    // --- ПРИВЕТСТВИЕ ---
     private void sendWelcome(long chatId) {
         String welcome = "🎮 Добро пожаловать!\n" +
                 "━━━━━━━━━━━━━━━━━━━━\n" +
@@ -218,57 +227,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, welcome);
     }
 
-    // --- КАСТОМНОЕ СООБЩЕНИЕ В ЧАТ ---
-    private void sendCustomMessage(String command, String sender) {
-        String[] parts = command.split(" ");
-        if (parts.length < 2) return;
-
-        String action = parts[0].toLowerCase();
-        String playerName = parts[1];
-        String time = "";
-        String reason = "";
-
-        if (action.equals("ban") || action.equals("mute") || action.equals("warn") || action.equals("jail")) {
-            if (parts.length >= 3) {
-                String possibleTime = parts[2];
-                if (possibleTime.matches("\\d+[smhdwMy]")) {
-                    time = possibleTime;
-                    if (parts.length > 3) reason = String.join(" ", Arrays.copyOfRange(parts, 3, parts.length));
-                    else reason = "Без причины";
-                } else {
-                    time = "перманентно";
-                    reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-                }
-            } else {
-                time = "перманентно";
-                reason = "Без причины";
-            }
-        } else if (action.equals("kick")) {
-            if (parts.length > 2) reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-            else reason = "Без причины";
-        } else {
-            return;
-        }
-
-        String actionName = "";
-        String color = "";
-        switch (action) {
-            case "ban": actionName = "забанил"; color = "§c"; break;
-            case "mute": actionName = "замутил"; color = "§e"; break;
-            case "kick": actionName = "выгнал"; color = "§6"; break;
-            case "warn": actionName = "выдал предупреждение"; color = "§5"; break;
-            case "jail": actionName = "посадил в тюрьму"; color = "§8"; break;
-            default: return;
-        }
-
-        String message = color + "✦ " + sender + " §f" + actionName + " игрока §a" + playerName;
-        if (!action.equals("kick")) message += " §fна срок §b" + time;
-        if (!reason.isEmpty()) message += " §fпо причине: §6" + reason;
-
-        message = "§8§m----------------------------§r\n" + message + "\n§8§m----------------------------§r";
-        Bukkit.broadcastMessage(message);
-    }
-
+    // --- ОТПРАВКА СООБЩЕНИЯ ---
     private void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
