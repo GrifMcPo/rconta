@@ -9,6 +9,7 @@ import java.util.TimeZone;
 public class LogsCommand {
 
     private final TelegramConsoleBot plugin;
+    private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public LogsCommand(TelegramConsoleBot plugin) {
         this.plugin = plugin;
@@ -18,7 +19,7 @@ public class LogsCommand {
         if (args.length < 2) {
             SendMessage msg = new SendMessage();
             msg.setChatId(String.valueOf(chatId));
-            msg.setText("ℹ️ Используй: !rcon logs <ник> [дней]\nПример: !rcon logs pley1657 30");
+            msg.setText("[БОТ] Используй: !rcon logs <ник> [дней]\nПример: !rcon logs pley1657 30");
             return msg;
         }
 
@@ -41,7 +42,7 @@ public class LogsCommand {
         msg.setChatId(String.valueOf(chatId));
 
         if (logs.isEmpty()) {
-            msg.setText("📭 Нет логов для " + playerName + " за последние " + days + " дн.");
+            msg.setText("[БОТ] Ответ сервера:\n" + SEPARATOR + "\n📭 Нет логов для " + playerName + " за последние " + days + " дн.\n" + SEPARATOR);
             return msg;
         }
 
@@ -49,8 +50,10 @@ public class LogsCommand {
         sdf.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
 
         StringBuilder response = new StringBuilder();
+        response.append("[БОТ] Ответ сервера:\n").append(SEPARATOR).append("\n");
         response.append("📋 Логи команд для ").append(playerName).append("\n");
-        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        response.append("📅 За последние ").append(days).append(" дней\n");
+        response.append(SEPARATOR).append("\n");
 
         int count = 0;
         for (CommandLogger.LogEntry entry : logs) {
@@ -71,7 +74,7 @@ public class LogsCommand {
             count++;
         }
 
-        response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        response.append(SEPARATOR).append("\n");
         response.append("📊 Всего записей: ").append(logs.size());
 
         msg.setText(response.toString());
