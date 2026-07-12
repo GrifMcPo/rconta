@@ -12,42 +12,198 @@ public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
+    private final TelegramConsoleBot plugin;
 
-    // Список заблокированных команд (из FlectonePulse)
-    private final String[] BLOCKED_COMMANDS = {
-        "/ban", "/tempban", "/unban",
-        "/mute", "/tempmute", "/unmute",
-        "/kick",
-        "/warn", "/unwarn",
-        "/jail", "/unjail"
-    };
-
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, TelegramConsoleBot plugin) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
+        this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
         Player player = event.getPlayer();
         String command = event.getMessage().toLowerCase();
 
-        // Логируем команду
         commandLogger.logCommand(player.getName(), event.getMessage());
 
-        // Блокируем команды наказаний из FlectonePulse
-        for (String blocked : BLOCKED_COMMANDS) {
-            if (command.startsWith(blocked) || command.startsWith("flectonepulse:" + blocked)) {
-                event.setCancelled(true);
-                player.sendMessage("§c⛔ Эта команда отключена!");
-                player.sendMessage("§7Используйте Telegram-бота для наказаний.");
+        // --- КОМАНДА /ban ---
+        if (command.startsWith("/ban ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /ban <ник> [время] <причина>");
                 return;
             }
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+
+            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+
+            if (parts.length > start) {
+                reason = String.join(" ", java.util.Arrays.copyOfRange(parts, start, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+
+            if (punishmentManager.banPlayer(target, player.getName(), reason, duration)) {
+                player.sendMessage("§aИгрок " + target + " забанен на " + duration);
+            } else {
+                player.sendMessage("§cИгрок " + target + " уже забанен!");
+            }
+            return;
         }
 
-        // Проверка мута (блокировка чата)
-        if (command.startsWith("/") && !command.startsWith("/msg") && !command.startsWith("/tell") && !command.startsWith("/w")) {
-            // Игнорируем команды, которые не влияют на чат
+        // --- КОМАНДА /unban ---
+        if (command.startsWith("/unban ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                player.sendMessage("§cИспользуй: /unban <ник>");
+                return;
+            }
+            String target = parts[1];
+            if (punishmentManager.unbanPlayer(target, player.getName())) {
+                player.sendMessage("§aИгрок " + target + " разбанен!");
+            } else {
+                player.sendMessage("§cИгрок " + target + " не забанен!");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /mute ---
+        if (command.startsWith("/mute ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /mute <ник> [время] <причина>");
+                return;
+            }
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+
+            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+
+            if (parts.length > start) {
+                reason = String.join(" ", java.util.Arrays.copyOfRange(parts, start, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+
+            if (punishmentManager.mutePlayer(target, player.getName(), reason, duration)) {
+                player.sendMessage("§aИгрок " + target + " замучен на " + duration);
+            } else {
+                player.sendMessage("§cИгрок " + target + " уже замучен!");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /unmute ---
+        if (command.startsWith("/unmute ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                player.sendMessage("§cИспользуй: /unmute <ник>");
+                return;
+            }
+            String target = parts[1];
+            if (punishmentManager.unmutePlayer(target, player.getName())) {
+                player.sendMessage("§aИгрок " + target + " размучен!");
+            } else {
+                player.sendMessage("§cИгрок " + target + " не замучен!");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /kick ---
+        if (command.startsWith("/kick ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /kick <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(parts, 2, parts.length));
+
+            if (punishmentManager.kickPlayer(target, player.getName(), reason)) {
+                player.sendMessage("§aИгрок " + target + " кикнут!");
+            } else {
+                player.sendMessage("§cИгрок " + target + " не найден на сервере!");
+            }
+            return;
+        }
+
+        // --- КОМАНДА /banlist ---
+        if (command.equalsIgnoreCase("/banlist")) {
+            event.setCancelled(true);
+            List<String> bans = punishmentManager.getBanList();
+            if (bans.isEmpty()) {
+                player.sendMessage("§eБанов нет.");
+            } else {
+                player.sendMessage("§6=== Список банов (" + bans.size() + ") ===");
+                for (String ban : bans) {
+                    player.sendMessage("§f" + ban);
+                }
+            }
+            return;
+        }
+
+        // --- КОМАНДА /mutelist ---
+        if (command.equalsIgnoreCase("/mutelist")) {
+            event.setCancelled(true);
+            List<String> mutes = punishmentManager.getMuteList();
+            if (mutes.isEmpty()) {
+                player.sendMessage("§eМутов нет.");
+            } else {
+                player.sendMessage("§6=== Список мутов (" + mutes.size() + ") ===");
+                for (String mute : mutes) {
+                    player.sendMessage("§f" + mute);
+                }
+            }
+            return;
+        }
+
+        // --- КОМАНДА /shist ---
+        if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                player.sendMessage("§cИспользуй: /shist <ник>");
+                return;
+            }
+            String target = parts[1];
+            List<String> history = punishmentManager.getHistory(target);
+
+            if (history.isEmpty()) {
+                player.sendMessage("§eИстория для " + target + " пуста.");
+            } else {
+                player.sendMessage("§6=== История наказаний для " + target + " (" + history.size() + ") ===");
+                for (String entry : history) {
+                    player.sendMessage("§f" + entry);
+                }
+            }
+            return;
+        }
+
+        // --- БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE ---
+        String[] blocked = {"/ban", "/tempban", "/unban", "/mute", "/tempmute", "/unmute", "/kick", "/warn", "/unwarn", "/jail", "/unjail"};
+        for (String b : blocked) {
+            if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
+                event.setCancelled(true);
+                player.sendMessage("§c⛔ Эта команда отключена! Используй /ban, /mute, /kick");
+                return;
+            }
         }
     }
 
