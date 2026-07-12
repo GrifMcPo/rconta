@@ -27,7 +27,6 @@ public class CommandLogger {
         String timestamp = dateFormat.format(new Date());
         LogEntry entry = new LogEntry(timestamp, playerName, command);
         logCache.add(entry);
-
         if (logCache.size() >= 100) {
             saveLogs();
         }
@@ -35,13 +34,9 @@ public class CommandLogger {
 
     public void saveLogs() {
         if (logCache.isEmpty()) return;
-
         String today = fileDateFormat.format(new Date());
         File logFile = new File(plugin.getDataFolder(), "logs_" + today + ".txt");
-
-        try (FileWriter fw = new FileWriter(logFile, true);
-             BufferedWriter bw = new BufferedWriter(fw)) {
-
+        try (FileWriter fw = new FileWriter(logFile, true); BufferedWriter bw = new BufferedWriter(fw)) {
             for (LogEntry entry : logCache) {
                 bw.write(entry.toString());
                 bw.newLine();
@@ -55,10 +50,8 @@ public class CommandLogger {
     private void loadLogs() {
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) return;
-
         File[] files = dataFolder.listFiles((dir, name) -> name.startsWith("logs_") && name.endsWith(".txt"));
         if (files == null) return;
-
         for (File file : files) {
             try {
                 List<String> lines = Files.readAllLines(file.toPath());
@@ -73,7 +66,6 @@ public class CommandLogger {
                 plugin.getLogger().warning("❌ Ошибка загрузки логов из " + file.getName());
             }
         }
-
         if (logCache.size() > maxLogs) {
             logCache.subList(0, logCache.size() - maxLogs).clear();
         }
@@ -83,7 +75,6 @@ public class CommandLogger {
         Date cutoff = new Date(System.currentTimeMillis() - days * 24L * 60 * 60 * 1000);
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sdf.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
-
         return logCache.stream()
                 .filter(entry -> {
                     try {
