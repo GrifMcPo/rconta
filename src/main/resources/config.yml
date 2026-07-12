@@ -1,2 +1,8 @@
 # Токен твоего бота от @BotFather
 telegram-token: "8812142860:AAHPD959FHSg41hka_I5riTcgznD1kpSz50"
+
+# Настройки RCON (для получения ответа от сервера)
+rcon:
+  host: "localhost"
+  port: 25575
+  password: "ВАШ_RCON_ПАРОЛЬ"
