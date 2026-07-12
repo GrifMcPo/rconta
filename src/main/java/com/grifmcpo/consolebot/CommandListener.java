@@ -11,6 +11,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 public class CommandListener implements Listener {
 
@@ -62,7 +63,6 @@ public class CommandListener implements Listener {
 
             if (authManager.verifyAuthCode(playerName, code)) {
                 if (!authManager.isRegistered(playerName)) {
-                    // Если не зарегистрирован — регистрируем с временным паролем
                     String tempPassword = UUID.randomUUID().toString().substring(0, 8);
                     if (authManager.registerPlayer(playerName, tempPassword, "0", ip)) {
                         authManager.activateSession(playerName, ip);
@@ -345,9 +345,7 @@ public class CommandListener implements Listener {
 
         // Проверяем регистрацию
         if (!authManager.isRegistered(playerName)) {
-            // Не зарегистрирован — генерируем код
             String code = authManager.generateAuthCode(playerName);
-            String telegramId = authManager.getTelegramId(playerName);
 
             player.sendMessage("§e🔐 Для регистрации на сервере введите код:");
             player.sendMessage("§e📝 Код: §b" + code);
@@ -360,7 +358,6 @@ public class CommandListener implements Listener {
 
         // Проверяем сессию
         if (!authManager.validateSession(playerName, ip)) {
-            // Сессия невалидна — запрос подтверждения
             String code = authManager.generateAuthCode(playerName);
 
             player.sendMessage("§e🔐 Требуется подтверждение входа!");
@@ -370,9 +367,7 @@ public class CommandListener implements Listener {
 
             authManager.freezePlayer(player);
         } else {
-            // Вход разрешён
             player.sendMessage("§a✅ Добро пожаловать на сервер!");
-            // Обновляем IP
             authManager.updateIP(playerName, ip);
         }
     }
@@ -385,14 +380,12 @@ public class CommandListener implements Listener {
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
 
-        // Проверяем, заморожен ли игрок
         if (authManager.isFrozen(player)) {
             event.setCancelled(true);
             player.sendMessage("§e🔐 Сначала подтвердите вход! Используйте /code <код>");
             return;
         }
 
-        // Проверяем мут
         if (!punishmentManager.canPlayerChat(player)) {
             event.setCancelled(true);
             String issuer = punishmentManager.getMuteIssuer(player.getName());
