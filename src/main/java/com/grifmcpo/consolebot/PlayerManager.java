@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -31,7 +31,7 @@ public class PlayerManager {
             try {
                 authFile.createNewFile();
             } catch (Exception e) {
-                plugin.getLogger().severe("❌ Не удалось создать auth.yml: " + e.getMessage());
+                plugin.getLogger().severe("❌ Не удалось создать auth.yml");
             }
         }
         authConfig = YamlConfiguration.loadConfiguration(authFile);
@@ -41,28 +41,39 @@ public class PlayerManager {
         try {
             authConfig.save(authFile);
         } catch (Exception e) {
-            plugin.getLogger().severe("❌ Ошибка сохранения auth.yml: " + e.getMessage());
+            plugin.getLogger().severe("❌ Ошибка сохранения auth.yml");
         }
     }
 
-    public boolean registerPlayer(String playerName, String password, String telegramId) {
-        if (isRegistered(playerName)) {
+    public String generateCode(String playerName) {
+        String code = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        pendingCodes.put(code, playerName);
+        codeTimestamps.put(code, System.currentTimeMillis());
+        plugin.getLogger().info("📝 Код для " + playerName + ": " + code);
+        return code;
+    }
+
+    public boolean registerPlayer(String code, String telegramId) {
+        if (!pendingCodes.containsKey(code)) return false;
+
+        Long timestamp = codeTimestamps.get(code);
+        if (timestamp == null || (System.currentTimeMillis() - timestamp) > 5 * 60 * 1000) {
+            pendingCodes.remove(code);
+            codeTimestamps.remove(code);
             return false;
         }
 
+        String playerName = pendingCodes.remove(code);
+        codeTimestamps.remove(code);
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
         if (uuid == null) {
             Player player = Bukkit.getPlayerExact(playerName);
-            if (player != null) {
-                uuid = player.getUniqueId();
-            } else {
-                return false;
-            }
+            if (player != null) uuid = player.getUniqueId();
+            else return false;
         }
 
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
-        authConfig.set(playerName + ".password", password);
         authConfig.set(playerName + ".ip", getPlayerIP(playerName));
         authConfig.set(playerName + ".sessionTime", System.currentTimeMillis());
         authConfig.set(playerName + ".registered", true);
@@ -87,16 +98,9 @@ public class PlayerManager {
         if (telegramId == null) return null;
         for (String key : authConfig.getKeys(false)) {
             String id = authConfig.getString(key + ".telegramId");
-            if (id != null && id.equals(telegramId)) {
-                return key;
-            }
+            if (id != null && id.equals(telegramId)) return key;
         }
         return null;
-    }
-
-    public boolean checkPassword(String playerName, String password) {
-        String savedPassword = authConfig.getString(playerName + ".password");
-        return savedPassword != null && savedPassword.equals(password);
     }
 
     public boolean isSessionValid(String playerName) {
