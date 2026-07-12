@@ -8,7 +8,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,10 +18,11 @@ public class AuthManager {
     private FileConfiguration authConfig;
     private final Map<String, String> pendingAuth = new ConcurrentHashMap<>(); // UUID -> код
     private final Map<String, Long> pendingAuthTime = new ConcurrentHashMap<>(); // UUID -> время
-    private final Map<UUID, String> frozenPlayers = new ConcurrentHashMap<>(); // замороженные игроки
+    private final Map<UUID, String> frozenPlayers = new ConcurrentHashMap<>();
+    private final Map<String, String> pendingTelegramId = new ConcurrentHashMap<>(); // UUID -> telegramId (ожидание привязки)
 
-    private static final long AUTH_TIMEOUT = 3 * 60 * 1000; // 3 минуты
-    private static final long SESSION_DURATION = 12 * 60 * 60 * 1000; // 12 часов
+    private static final long AUTH_TIMEOUT = 3 * 60 * 1000;
+    private static final long SESSION_DURATION = 12 * 60 * 60 * 1000;
 
     public AuthManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -49,7 +49,7 @@ public class AuthManager {
         }
     }
 
-    // ===== ХЕШИРОВАНИЕ ПАРОЛЯ (SHA-256) =====
+    // ===== ХЕШИРОВАНИЕ =====
     public String hashPassword(String password) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -71,17 +71,15 @@ public class AuthManager {
     }
 
     // ===== РЕГИСТРАЦИЯ =====
-    public boolean registerPlayer(String playerName, String password, String telegramId, String ip) {
+    public boolean registerPlayer(String playerName, String telegramId, String ip) {
         UUID uuid = Bukkit.getPlayerUniqueId(playerName);
         if (uuid == null) return false;
         if (isRegistered(playerName)) return false;
 
-        String hash = hashPassword(password);
         long now = System.currentTimeMillis();
 
         authConfig.set(playerName + ".uuid", uuid.toString());
         authConfig.set(playerName + ".telegram_id", telegramId);
-        authConfig.set(playerName + ".password_hash", hash);
         authConfig.set(playerName + ".ip_last", ip);
         authConfig.set(playerName + ".registered_at", now);
         authConfig.set(playerName + ".session_active", false);
@@ -120,6 +118,10 @@ public class AuthManager {
         return null;
     }
 
+    public String getPlayerUUID(String playerName) {
+        return authConfig.getString(playerName + ".uuid");
+    }
+
     // ===== ГЕНЕРАЦИЯ КОДА =====
     public String generateAuthCode(String playerName) {
         String code = String.format("%06d", new Random().nextInt(999999));
@@ -153,6 +155,12 @@ public class AuthManager {
         return false;
     }
 
+    public String getPendingCode(String playerName) {
+        UUID uuid = Bukkit.getPlayerUniqueId(playerName);
+        if (uuid == null) return null;
+        return pendingAuth.get(uuid.toString());
+    }
+
     // ===== СЕССИЯ =====
     public boolean activateSession(String playerName, String ip) {
         if (!isRegistered(playerName)) return false;
@@ -179,6 +187,19 @@ public class AuthManager {
         return true;
     }
 
+    public long getSessionExpires(String playerName) {
+        return authConfig.getLong(playerName + ".session_expires", 0);
+    }
+
+    public String getSessionTimeLeft(String playerName) {
+        long expires = getSessionExpires(playerName);
+        long left = expires - System.currentTimeMillis();
+        if (left <= 0) return "Истекла";
+        long hours = left / (60 * 60 * 1000);
+        long minutes = (left % (60 * 60 * 1000)) / (60 * 1000);
+        return hours + "ч " + minutes + "м";
+    }
+
     public boolean isFrozen(Player player) {
         return frozenPlayers.containsKey(player.getUniqueId());
     }
@@ -187,7 +208,7 @@ public class AuthManager {
         frozenPlayers.put(player.getUniqueId(), player.getName());
         player.setWalkSpeed(0);
         player.setFlySpeed(0);
-        player.sendMessage("§e🔐 Требуется подтверждение входа! Введите код из Telegram.");
+        player.sendMessage("§e🔐 Для регистрации или входа введите код из чата!");
     }
 
     public void unfreezePlayer(Player player) {
@@ -202,7 +223,7 @@ public class AuthManager {
         player.kickPlayer("§c" + reason);
     }
 
-    // ===== ПРОВЕРКА IP =====
+    // ===== IP =====
     public boolean isIPDifferent(String playerName, String ip) {
         String lastIp = authConfig.getString(playerName + ".ip_last", "");
         return !lastIp.equals(ip);
@@ -211,5 +232,20 @@ public class AuthManager {
     public void updateIP(String playerName, String ip) {
         authConfig.set(playerName + ".ip_last", ip);
         saveAuthData();
+    }
+
+    // ===== ДАННЫЕ ДЛЯ !ME =====
+    public String getRegisteredAt(String playerName) {
+        long time = authConfig.getLong(playerName + ".registered_at", 0);
+        if (time == 0) return "Неизвестно";
+        return new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(new Date(time));
+    }
+
+    public boolean isSessionActive(String playerName) {
+        return authConfig.getBoolean(playerName + ".session_active", false);
+    }
+
+    public String getIpLast(String playerName) {
+        return authConfig.getString(playerName + ".ip_last", "Неизвестно");
     }
 }
