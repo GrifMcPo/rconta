@@ -19,6 +19,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private CommandLogger commandLogger;
     private LogsCommand logsCommand;
     private CommandExecutor commandExecutor;
+    private PunishmentManager punishmentManager;
 
     @Override
     public void onEnable() {
@@ -37,12 +38,13 @@ public class TelegramConsoleBot extends JavaPlugin {
         commandLogger = new CommandLogger(this);
         logsCommand = new LogsCommand(this);
         commandExecutor = new CommandExecutor(this);
+        punishmentManager = new PunishmentManager(this);
 
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger), this);
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, this), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor));
+            botsApi.registerBot(new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand, commandExecutor, punishmentManager));
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
             getLogger().severe("❌ Ошибка при регистрации бота: " + e.getMessage());
@@ -134,5 +136,9 @@ public class TelegramConsoleBot extends JavaPlugin {
 
     public CommandExecutor getCommandExecutor() {
         return commandExecutor;
+    }
+
+    public PunishmentManager getPunishmentManager() {
+        return punishmentManager;
     }
 }
