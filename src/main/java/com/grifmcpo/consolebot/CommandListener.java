@@ -37,7 +37,6 @@ public class CommandListener implements Listener {
         // ============================================
 
         if (authManager.isFrozen(player)) {
-            // Разрешаем только /code и /login
             if (!command.startsWith("/code ") && !command.startsWith("/login ")) {
                 event.setCancelled(true);
                 player.sendMessage("§e🔐 Сначала подтвердите вход!");
@@ -207,7 +206,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /banlist (с пагинацией) ---
+        // --- /banlist ---
         if (command.equalsIgnoreCase("/banlist") || command.startsWith("/banlist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -235,7 +234,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /mutelist (с пагинацией) ---
+        // --- /mutelist ---
         if (command.equalsIgnoreCase("/mutelist") || command.startsWith("/mutelist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -263,7 +262,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /shist /hist (с пагинацией) ---
+        // --- /shist /hist ---
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -339,11 +338,9 @@ public class CommandListener implements Listener {
         String playerName = player.getName();
         String ip = player.getAddress().getHostString();
 
-        // Проверяем бан
         punishmentManager.checkOnJoin(player);
         if (!player.isOnline()) return;
 
-        // Проверяем регистрацию
         if (!authManager.isRegistered(playerName)) {
             String code = authManager.generateAuthCode(playerName);
 
@@ -356,7 +353,6 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // Проверяем сессию
         if (!authManager.validateSession(playerName, ip)) {
             String code = authManager.generateAuthCode(playerName);
 
