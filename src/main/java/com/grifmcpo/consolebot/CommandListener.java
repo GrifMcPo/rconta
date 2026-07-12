@@ -29,17 +29,12 @@ public class CommandListener implements Listener {
 
         commandLogger.logCommand(player.getName(), event.getMessage());
 
-        // ============================================
-        // ==== КОМАНДЫ ДЛЯ ИГРОКОВ =====
-        // ============================================
-
         // --- /ban ---
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
             if (parts.length < 3) {
                 player.sendMessage("§cИспользуй: /ban <ник> [время] <причина>");
-                player.sendMessage("§7Пример: /ban pley1657 1d читы");
                 return;
             }
             String target = parts[1];
@@ -90,7 +85,6 @@ public class CommandListener implements Listener {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
                 player.sendMessage("§cИспользуй: /mute <ник> [время] <причина>");
-                player.sendMessage("§7Пример: /mute pley1657 1m спам");
                 return;
             }
             String target = parts[1];
@@ -160,10 +154,9 @@ public class CommandListener implements Listener {
             int page = 1;
             String[] parts = command.split(" ");
             if (parts.length > 1) {
-                try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
             }
             int pageSize = 10;
-
             List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
             List<String> bans = punishmentManager.getBanList(page, pageSize);
             int totalPages = punishmentManager.getTotalPages(allBans.size(), pageSize);
@@ -188,10 +181,9 @@ public class CommandListener implements Listener {
             int page = 1;
             String[] parts = command.split(" ");
             if (parts.length > 1) {
-                try { page = Integer.parseInt(parts[1]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
             }
             int pageSize = 10;
-
             List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
             List<String> mutes = punishmentManager.getMuteList(page, pageSize);
             int totalPages = punishmentManager.getTotalPages(allMutes.size(), pageSize);
@@ -221,7 +213,7 @@ public class CommandListener implements Listener {
             String target = parts[1];
             int page = 1;
             if (parts.length > 2) {
-                try { page = Integer.parseInt(parts[2]); if (page < 1) page = 1; } catch (NumberFormatException e) {}
+                try { page = Integer.parseInt(parts[2]); } catch (NumberFormatException e) {}
             }
             int pageSize = 10;
 
@@ -230,17 +222,10 @@ public class CommandListener implements Listener {
 
             for (PunishmentManager.HistoryEntry entry : allHistory) {
                 String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
-                String status;
-                if (entry.type.equals("ban")) {
-                    status = punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]";
-                } else if (entry.type.equals("mute")) {
-                    status = punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]";
-                } else {
-                    status = "[Истек]";
-                }
+                String status = entry.type.equals("ban") ? (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
+                               (punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]");
                 formattedHistory.add(" - " + timeAgo + " -\n   " + target + " был " + entry.getActionName() +
-                        " на " + entry.duration + " " +
-                        entry.issuer + ": " + entry.reason + " " + status);
+                        " на " + entry.duration + " " + entry.issuer + ": " + entry.reason + " " + status);
             }
 
             List<String> pageItems = paginate(formattedHistory, page, pageSize);
@@ -261,10 +246,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE =====
-        // ============================================
-
+        // --- БЛОКИРУЕМ FLECTONEPULSE ---
         String[] blocked = {"/ban", "/tempban", "/unban", "/mute", "/tempmute", "/unmute", "/kick", "/warn", "/unwarn", "/jail", "/unjail"};
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
@@ -276,14 +258,9 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ========================================
-    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
-    // ========================================
-
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
-
         if (!punishmentManager.canPlayerChat(player)) {
             event.setCancelled(true);
             String issuer = punishmentManager.getMuteIssuer(player.getName());
@@ -294,19 +271,11 @@ public class CommandListener implements Listener {
         }
     }
 
-    // ========================================
-    // ==== ПРОВЕРКА ПРИ ВХОДЕ (ТОЛЬКО БАН/МУТ) =====
-    // ========================================
-
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         punishmentManager.checkOnJoin(player);
     }
-
-    // ========================================
-    // ==== ВСПОМОГАТЕЛЬНЫЙ МЕТОД ПАГИНАЦИИ =====
-    // ========================================
 
     private List<String> paginate(List<String> items, int page, int pageSize) {
         int start = (page - 1) * pageSize;
