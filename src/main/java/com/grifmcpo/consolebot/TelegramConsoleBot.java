@@ -23,7 +23,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     private AdminLogger adminLogger;
     private RankManager rankManager;
     private TelegramBotHandler botHandler;
-    private ReportsPlugin reportsPlugin;
 
     @Override
     public void onEnable() {
@@ -45,10 +44,9 @@ public class TelegramConsoleBot extends JavaPlugin {
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
-        reportsPlugin = new ReportsPlugin(this);
 
-        // Исправлено: передаём 3 аргумента
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, reportsPlugin), this);
+        // Регистрируем слушатель команд
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
@@ -65,13 +63,20 @@ public class TelegramConsoleBot extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("❌ ConsoleBot выключен.");
-        if (commandLogger != null) commandLogger.saveLogs();
-        if (commandExecutor != null) commandExecutor.close();
+        if (commandLogger != null) {
+            commandLogger.saveLogs();
+        }
+        if (commandExecutor != null) {
+            commandExecutor.close();
+        }
     }
 
+    // ===== ЗАГРУЗКА АДМИНОВ =====
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
-        if (!adminsFile.exists()) saveResource("admins.yml", false);
+        if (!adminsFile.exists()) {
+            saveResource("admins.yml", false);
+        }
         reloadAdmins();
     }
 
@@ -104,18 +109,58 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    public Map<String, String> getAdmins() { return admins; }
-    public long getOwnerId() { return ownerId; }
-    public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
-    public void removeAdmin(String telegramId) { admins.remove(telegramId); saveAdmins(); }
-    public boolean isAdmin(long telegramId) { return admins.containsKey(String.valueOf(telegramId)); }
-    public String getCustomSender(long telegramId) { return admins.get(String.valueOf(telegramId)); }
-    public PlayerManager getPlayerManager() { return playerManager; }
-    public CommandLogger getCommandLogger() { return commandLogger; }
-    public CommandExecutor getCommandExecutor() { return commandExecutor; }
-    public PunishmentManager getPunishmentManager() { return punishmentManager; }
-    public AdminLogger getAdminLogger() { return adminLogger; }
-    public RankManager getRankManager() { return rankManager; }
-    public ReportsPlugin getReportsPlugin() { return reportsPlugin; }
-    public TelegramBotHandler getBotHandler() { return botHandler; }
+    // ===== ГЕТТЕРЫ =====
+    public Map<String, String> getAdmins() {
+        return admins;
+    }
+
+    public long getOwnerId() {
+        return ownerId;
+    }
+
+    public void addAdmin(String telegramId, String playerName) {
+        admins.put(telegramId, playerName);
+        saveAdmins();
+    }
+
+    public void removeAdmin(String telegramId) {
+        admins.remove(telegramId);
+        saveAdmins();
+    }
+
+    public boolean isAdmin(long telegramId) {
+        return admins.containsKey(String.valueOf(telegramId));
+    }
+
+    public String getCustomSender(long telegramId) {
+        return admins.get(String.valueOf(telegramId));
+    }
+
+    public PlayerManager getPlayerManager() {
+        return playerManager;
+    }
+
+    public CommandLogger getCommandLogger() {
+        return commandLogger;
+    }
+
+    public CommandExecutor getCommandExecutor() {
+        return commandExecutor;
+    }
+
+    public PunishmentManager getPunishmentManager() {
+        return punishmentManager;
+    }
+
+    public AdminLogger getAdminLogger() {
+        return adminLogger;
+    }
+
+    public RankManager getRankManager() {
+        return rankManager;
+    }
+
+    public TelegramBotHandler getBotHandler() {
+        return botHandler;
+    }
 }
