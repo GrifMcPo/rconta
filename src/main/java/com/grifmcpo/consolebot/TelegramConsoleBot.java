@@ -45,7 +45,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
 
-        // Регистрируем слушатель команд — ТОЛЬКО 2 АРГУМЕНТА!
+        // РЕГИСТРИРУЕМ СЛУШАТЕЛЬ — ТОЛЬКО 2 АРГУМЕНТА!
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
@@ -63,20 +63,13 @@ public class TelegramConsoleBot extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("❌ ConsoleBot выключен.");
-        if (commandLogger != null) {
-            commandLogger.saveLogs();
-        }
-        if (commandExecutor != null) {
-            commandExecutor.close();
-        }
+        if (commandLogger != null) commandLogger.saveLogs();
+        if (commandExecutor != null) commandExecutor.close();
     }
 
-    // ===== ЗАГРУЗКА АДМИНОВ =====
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
-        if (!adminsFile.exists()) {
-            saveResource("admins.yml", false);
-        }
+        if (!adminsFile.exists()) saveResource("admins.yml", false);
         reloadAdmins();
     }
 
@@ -109,58 +102,17 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    // ===== ГЕТТЕРЫ =====
-    public Map<String, String> getAdmins() {
-        return admins;
-    }
-
-    public long getOwnerId() {
-        return ownerId;
-    }
-
-    public void addAdmin(String telegramId, String playerName) {
-        admins.put(telegramId, playerName);
-        saveAdmins();
-    }
-
-    public void removeAdmin(String telegramId) {
-        admins.remove(telegramId);
-        saveAdmins();
-    }
-
-    public boolean isAdmin(long telegramId) {
-        return admins.containsKey(String.valueOf(telegramId));
-    }
-
-    public String getCustomSender(long telegramId) {
-        return admins.get(String.valueOf(telegramId));
-    }
-
-    public PlayerManager getPlayerManager() {
-        return playerManager;
-    }
-
-    public CommandLogger getCommandLogger() {
-        return commandLogger;
-    }
-
-    public CommandExecutor getCommandExecutor() {
-        return commandExecutor;
-    }
-
-    public PunishmentManager getPunishmentManager() {
-        return punishmentManager;
-    }
-
-    public AdminLogger getAdminLogger() {
-        return adminLogger;
-    }
-
-    public RankManager getRankManager() {
-        return rankManager;
-    }
-
-    public TelegramBotHandler getBotHandler() {
-        return botHandler;
-    }
+    public Map<String, String> getAdmins() { return admins; }
+    public long getOwnerId() { return ownerId; }
+    public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
+    public void removeAdmin(String telegramId) { admins.remove(telegramId); saveAdmins(); }
+    public boolean isAdmin(long telegramId) { return admins.containsKey(String.valueOf(telegramId)); }
+    public String getCustomSender(long telegramId) { return admins.get(String.valueOf(telegramId)); }
+    public PlayerManager getPlayerManager() { return playerManager; }
+    public CommandLogger getCommandLogger() { return commandLogger; }
+    public CommandExecutor getCommandExecutor() { return commandExecutor; }
+    public PunishmentManager getPunishmentManager() { return punishmentManager; }
+    public AdminLogger getAdminLogger() { return adminLogger; }
+    public RankManager getRankManager() { return rankManager; }
+    public TelegramBotHandler getBotHandler() { return botHandler; }
 }
