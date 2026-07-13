@@ -7,17 +7,15 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 public class ReportListener implements Listener {
 
-    public ReportListener() {
-        // Пустой конструктор
-    }
+    public ReportListener() {}
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        // Можно добавить логику при входе игрока
+        // Можно добавить логику
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        // Можно добавить логику при выходе игрока
+        // Можно добавить логику
     }
 }
