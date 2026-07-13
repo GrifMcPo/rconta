@@ -45,7 +45,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
 
-        // Регистрируем слушатель команд
+        // Регистрируем слушатель команд — ТОЛЬКО 2 АРГУМЕНТА!
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
