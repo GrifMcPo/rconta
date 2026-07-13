@@ -37,8 +37,7 @@ public class CommandListener implements Listener {
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
                 event.setCancelled(true);
-                // Не отправляем сообщение, чтобы не спамить
-                // Просто блокируем и даём нашим командам отработать
+                // БЛОКИРУЕМ, НАШИ КОМАНДЫ ОТРАБОТАЮТ НИЖЕ
                 return;
             }
         }
@@ -102,8 +101,10 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== КАСТОМНЫЕ БАНЫ =====
+        // ==== КАСТОМНЫЕ БАНЫ (НАШИ!) =====
         // ============================================
+
+        // --- /ban ---
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -132,9 +133,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /unban =====
-        // ============================================
+        // --- /unban ---
         if (command.startsWith("/unban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -152,9 +151,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /mute =====
-        // ============================================
+        // --- /mute ---
         if (command.startsWith("/mute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -183,9 +180,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /unmute =====
-        // ============================================
+        // --- /unmute ---
         if (command.startsWith("/unmute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -203,9 +198,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /kick =====
-        // ============================================
+        // --- /kick ---
         if (command.startsWith("/kick ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -223,9 +216,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /banlist =====
-        // ============================================
+        // --- /banlist ---
         if (command.equalsIgnoreCase("/banlist") || command.startsWith("/banlist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -252,9 +243,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /mutelist =====
-        // ============================================
+        // --- /mutelist ---
         if (command.equalsIgnoreCase("/mutelist") || command.startsWith("/mutelist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -281,9 +270,7 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // ============================================
-        // ==== /shist /hist =====
-        // ============================================
+        // --- /shist /hist ---
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
