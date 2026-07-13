@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -26,14 +26,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
     private final RankManager rankManager;
-    private final GroupManager groupManager;
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
                               CommandExecutor commandExecutor, PunishmentManager punishmentManager,
-                              RankManager rankManager, GroupManager groupManager) {
+                              RankManager rankManager) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
@@ -42,7 +41,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
         this.rankManager = rankManager;
-        this.groupManager = groupManager;
     }
 
     @Override
@@ -58,7 +56,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         // ============================================
-        // ==== КНОПКИ (CallbackQuery) =====
+        // ==== КНОПКИ =====
         // ============================================
         if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
@@ -137,7 +135,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== СООБЩЕНИЯ (Message) =====
+        // ==== СООБЩЕНИЯ =====
         // ============================================
         if (!update.hasMessage() || !update.getMessage().hasText()) {
             return;
