@@ -2,299 +2,202 @@ package com.grifmcpo.consolebot;
 
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.telegram.telegrambots.meta.api.methods.groupadministration.BanChatMember;
-import org.telegram.telegrambots.meta.api.methods.groupadministration.RestrictChatMember;
-import org.telegram.telegrambots.meta.api.methods.groupadministration.UnbanChatMember;
-import org.telegram.telegrambots.meta.api.objects.ChatPermissions;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class GroupManager {
 
     private final TelegramConsoleBot plugin;
-    private File groupFile;
-    private FileConfiguration groupConfig;
-    private final Map<Long, GroupData> groups = new ConcurrentHashMap<>();
-    private final Map<Long, Long> groupOwners = new ConcurrentHashMap<>(); // groupId -> ownerId
+    private final File groupsFile;
+    private Map<String, Group> groups = new HashMap<>();
 
     public GroupManager(TelegramConsoleBot plugin) {
         this.plugin = plugin;
+        this.groupsFile = new File(plugin.getDataFolder(), "groups.yml");
         loadGroups();
     }
 
     private void loadGroups() {
-        groupFile = new File(plugin.getDataFolder(), "groups.yml");
-        if (!groupFile.exists()) {
-            try {
-                groupFile.createNewFile();
-            } catch (Exception e) {
-                plugin.getLogger().severe("❌ Не удалось создать groups.yml");
-            }
+        if (!groupsFile.exists()) {
+            plugin.saveResource("groups.yml", false);
         }
-        groupConfig = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(groupFile);
-        loadGroupsFromConfig();
+        reloadGroups();
     }
 
-    private void loadGroupsFromConfig() {
+    public void reloadGroups() {
         groups.clear();
-        groupOwners.clear();
+        if (!groupsFile.exists()) return;
 
-        for (String key : groupConfig.getKeys(false)) {
-            if (key.equals("nextId")) continue;
-            long groupId = Long.parseLong(key);
-            long ownerId = groupConfig.getLong(key + ".owner");
-            String groupName = groupConfig.getString(key + ".name", "Неизвестно");
-            boolean isBanned = groupConfig.getBoolean(key + ".isBanned", false);
+        FileConfiguration config = YamlConfiguration.loadConfiguration(groupsFile);
+        for (String groupName : config.getKeys(false)) {
+            Group group = new Group(groupName);
+            List<String> permissions = config.getStringList(groupName + ".permissions");
+            List<Long> members = config.getLongList(groupName + ".members");
+            String prefix = config.getString(groupName + ".prefix", "");
+            String suffix = config.getString(groupName + ".suffix", "");
 
-            GroupData group = new GroupData(groupId, ownerId, groupName);
-            group.setBanned(isBanned);
-            groups.put(groupId, group);
-            groupOwners.put(groupId, ownerId);
+            group.setPermissions(new HashSet<>(permissions));
+            
+            // ИСПРАВЛЕНО: конвертируем Long в Integer
+            Set<Integer> memberSet = new HashSet<>();
+            for (long member : members) {
+                memberSet.add((int) member); // Явное приведение long к int
+            }
+            group.setMembers(memberSet);
+            
+            group.setPrefix(prefix);
+            group.setSuffix(suffix);
+            groups.put(groupName, group);
         }
-
         plugin.getLogger().info("✅ Загружено групп: " + groups.size());
     }
 
     public void saveGroups() {
-        for (Map.Entry<Long, GroupData> entry : groups.entrySet()) {
-            long groupId = entry.getKey();
-            GroupData group = entry.getValue();
-            groupConfig.set(String.valueOf(groupId) + ".owner", group.getOwnerId());
-            groupConfig.set(String.valueOf(groupId) + ".name", group.getName());
-            groupConfig.set(String.valueOf(groupId) + ".isBanned", group.isBanned());
+        FileConfiguration config = new YamlConfiguration();
+        for (Map.Entry<String, Group> entry : groups.entrySet()) {
+            String name = entry.getKey();
+            Group group = entry.getValue();
+            config.set(name + ".permissions", new ArrayList<>(group.getPermissions()));
+            
+            // ИСПРАВЛЕНО: конвертируем Integer в Long для сохранения
+            List<Long> members = new ArrayList<>();
+            for (int member : group.getMembers()) {
+                members.add((long) member);
+            }
+            config.set(name + ".members", members);
+            
+            config.set(name + ".prefix", group.getPrefix());
+            config.set(name + ".suffix", group.getSuffix());
         }
         try {
-            groupConfig.save(groupFile);
+            config.save(groupsFile);
         } catch (Exception e) {
             plugin.getLogger().severe("❌ Ошибка сохранения groups.yml: " + e.getMessage());
         }
     }
 
-    // ===== ПРИВЯЗКА ГРУППЫ =====
-    public boolean linkGroup(long groupId, long ownerId, String groupName) {
-        if (groups.containsKey(groupId)) return false;
+    // ============================================
+    // ==== МЕТОДЫ РАБОТЫ С ГРУППАМИ =====
+    // ============================================
 
-        // Проверяем, не привязана ли уже группа к этому владельцу
-        for (GroupData g : groups.values()) {
-            if (g.getOwnerId() == ownerId) {
-                return false; // У владельца уже есть группа
-            }
-        }
-
-        GroupData group = new GroupData(groupId, ownerId, groupName);
-        groups.put(groupId, group);
-        groupOwners.put(groupId, ownerId);
+    public boolean createGroup(String name) {
+        if (groups.containsKey(name)) return false;
+        groups.put(name, new Group(name));
         saveGroups();
         return true;
     }
 
-    public boolean unlinkGroup(long groupId) {
-        if (!groups.containsKey(groupId)) return false;
-        groups.remove(groupId);
-        groupOwners.remove(groupId);
-        groupConfig.set(String.valueOf(groupId), null);
+    public boolean deleteGroup(String name) {
+        if (!groups.containsKey(name)) return false;
+        groups.remove(name);
         saveGroups();
         return true;
     }
 
-    public boolean isGroupLinked(long groupId) {
-        return groups.containsKey(groupId);
+    public boolean addMember(String groupName, long userId) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        // ИСПРАВЛЕНО: конвертируем long в int
+        group.getMembers().add((int) userId);
+        saveGroups();
+        return true;
     }
 
-    public Long getGroupOwner(long groupId) {
-        return groupOwners.get(groupId);
+    public boolean removeMember(String groupName, long userId) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        // ИСПРАВЛЕНО: конвертируем long в int
+        return group.getMembers().remove((int) userId);
     }
 
-    public List<Long> getAllGroups() {
-        return new ArrayList<>(groups.keySet());
+    public boolean addPermission(String groupName, String permission) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        group.getPermissions().add(permission);
+        saveGroups();
+        return true;
     }
 
-    // ===== БАН В ГРУППЕ =====
-    public boolean banUser(long groupId, long userId, long chatId, String reason, String duration) {
-        if (!groups.containsKey(groupId)) return false;
-
-        try {
-            BanChatMember ban = new BanChatMember();
-            ban.setChatId(String.valueOf(groupId));
-            ban.setUserId(userId);
-
-            plugin.getBotHandler().execute(ban);
-
-            // Сохраняем бан
-            groups.get(groupId).addBan(userId, reason, duration);
-            saveGroups();
-            return true;
-        } catch (TelegramApiException e) {
-            plugin.getLogger().warning("❌ Ошибка бана в группе: " + e.getMessage());
-            return false;
-        }
+    public boolean removePermission(String groupName, String permission) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        return group.getPermissions().remove(permission);
     }
 
-    public boolean unbanUser(long groupId, long userId, String reason) {
-        if (!groups.containsKey(groupId)) return false;
-
-        try {
-            UnbanChatMember unban = new UnbanChatMember();
-            unban.setChatId(String.valueOf(groupId));
-            unban.setUserId(userId);
-
-            plugin.getBotHandler().execute(unban);
-
-            groups.get(groupId).removeBan(userId);
-            saveGroups();
-            return true;
-        } catch (TelegramApiException e) {
-            plugin.getLogger().warning("❌ Ошибка разбана в группе: " + e.getMessage());
-            return false;
-        }
+    public boolean setPrefix(String groupName, String prefix) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        group.setPrefix(prefix);
+        saveGroups();
+        return true;
     }
 
-    // ===== МУТ В ГРУППЕ =====
-    public boolean muteUser(long groupId, long userId, String reason, String duration) {
-        if (!groups.containsKey(groupId)) return false;
+    public boolean setSuffix(String groupName, String suffix) {
+        Group group = groups.get(groupName);
+        if (group == null) return false;
+        group.setSuffix(suffix);
+        saveGroups();
+        return true;
+    }
 
-        try {
-            RestrictChatMember mute = new RestrictChatMember();
-            mute.setChatId(String.valueOf(groupId));
-            mute.setUserId(userId);
+    // ============================================
+    // ==== ГЕТТЕРЫ =====
+    // ============================================
 
-            ChatPermissions permissions = new ChatPermissions();
-            permissions.setCanSendMessages(false);
-            permissions.setCanSendMediaMessages(false);
-            permissions.setCanSendOtherMessages(false);
-            mute.setPermissions(permissions);
+    public Group getGroup(String name) {
+        return groups.get(name);
+    }
 
-            // Устанавливаем время
-            if (!duration.equals("навсегда")) {
-                long timeInSeconds = parseTimeToSeconds(duration);
-                mute.setUntilDate(System.currentTimeMillis() / 1000 + timeInSeconds);
+    public Set<String> getGroupNames() {
+        return groups.keySet();
+    }
+
+    public String getGroupNameByUser(long userId) {
+        // ИСПРАВЛЕНО: конвертируем long в int для поиска
+        int id = (int) userId;
+        for (Map.Entry<String, Group> entry : groups.entrySet()) {
+            if (entry.getValue().getMembers().contains(id)) {
+                return entry.getKey();
             }
-
-            plugin.getBotHandler().execute(mute);
-
-            groups.get(groupId).addMute(userId, reason, duration);
-            saveGroups();
-            return true;
-        } catch (TelegramApiException e) {
-            plugin.getLogger().warning("❌ Ошибка мута в группе: " + e.getMessage());
-            return false;
         }
+        return null;
     }
 
-    public boolean unmuteUser(long groupId, long userId, String reason) {
-        if (!groups.containsKey(groupId)) return false;
-
-        try {
-            RestrictChatMember unmute = new RestrictChatMember();
-            unmute.setChatId(String.valueOf(groupId));
-            unmute.setUserId(userId);
-
-            ChatPermissions permissions = new ChatPermissions();
-            permissions.setCanSendMessages(true);
-            permissions.setCanSendMediaMessages(true);
-            permissions.setCanSendOtherMessages(true);
-            unmute.setPermissions(permissions);
-
-            plugin.getBotHandler().execute(unmute);
-
-            groups.get(groupId).removeMute(userId);
-            saveGroups();
-            return true;
-        } catch (TelegramApiException e) {
-            plugin.getLogger().warning("❌ Ошибка размута в группе: " + e.getMessage());
-            return false;
-        }
+    public List<String> getGroupPermissions(String groupName) {
+        Group group = groups.get(groupName);
+        return group != null ? new ArrayList<>(group.getPermissions()) : new ArrayList<>();
     }
 
-    private long parseTimeToSeconds(String time) {
-        if (time == null || time.equals("навсегда")) return 0;
-        char unit = time.charAt(time.length() - 1);
-        long value = Long.parseLong(time.substring(0, time.length() - 1));
-        switch (unit) {
-            case 'm': return value * 60;
-            case 'h': return value * 60 * 60;
-            case 'd': return value * 24 * 60 * 60;
-            case 'w': return value * 7 * 24 * 60 * 60;
-            case 'M': return value * 30L * 24 * 60 * 60;
-            case 'y': return value * 365L * 24 * 60 * 60;
-            default: return 0;
-        }
+    public boolean hasGroupPermission(String groupName, String permission) {
+        Group group = groups.get(groupName);
+        return group != null && group.getPermissions().contains(permission);
     }
 
-    // ===== КЛАСС ДАННЫХ ГРУППЫ =====
-    public static class GroupData {
-        private final long groupId;
-        private final long ownerId;
+    // ============================================
+    // ==== ВНУТРЕННИЙ КЛАСС GROUP =====
+    // ============================================
+
+    public static class Group {
         private final String name;
-        private boolean isBanned = false;
-        private final Map<Long, BanData> bans = new HashMap<>();
-        private final Map<Long, MuteData> mutes = new HashMap<>();
+        private Set<Integer> members = new HashSet<>();
+        private Set<String> permissions = new HashSet<>();
+        private String prefix = "";
+        private String suffix = "";
 
-        public GroupData(long groupId, long ownerId, String name) {
-            this.groupId = groupId;
-            this.ownerId = ownerId;
+        public Group(String name) {
             this.name = name;
         }
 
-        public long getGroupId() { return groupId; }
-        public long getOwnerId() { return ownerId; }
         public String getName() { return name; }
-        public boolean isBanned() { return isBanned; }
-        public void setBanned(boolean banned) { isBanned = banned; }
-
-        public void addBan(long userId, String reason, String duration) {
-            bans.put(userId, new BanData(userId, reason, duration, System.currentTimeMillis()));
-        }
-
-        public void removeBan(long userId) {
-            bans.remove(userId);
-        }
-
-        public void addMute(long userId, String reason, String duration) {
-            mutes.put(userId, new MuteData(userId, reason, duration, System.currentTimeMillis()));
-        }
-
-        public void removeMute(long userId) {
-            mutes.remove(userId);
-        }
-
-        public boolean isMuted(long userId) {
-            return mutes.containsKey(userId);
-        }
-
-        public boolean isBanned(long userId) {
-            return bans.containsKey(userId);
-        }
-    }
-
-    public static class BanData {
-        public final long userId;
-        public final String reason;
-        public final String duration;
-        public final long timestamp;
-
-        public BanData(long userId, String reason, String duration, long timestamp) {
-            this.userId = userId;
-            this.reason = reason;
-            this.duration = duration;
-            this.timestamp = timestamp;
-        }
-    }
-
-    public static class MuteData {
-        public final long userId;
-        public final String reason;
-        public final String duration;
-        public final long timestamp;
-
-        public MuteData(long userId, String reason, String duration, long timestamp) {
-            this.userId = userId;
-            this.reason = reason;
-            this.duration = duration;
-            this.timestamp = timestamp;
-        }
+        public Set<Integer> getMembers() { return members; }
+        public void setMembers(Set<Integer> members) { this.members = members; }
+        public Set<String> getPermissions() { return permissions; }
+        public void setPermissions(Set<String> permissions) { this.permissions = permissions; }
+        public String getPrefix() { return prefix; }
+        public void setPrefix(String prefix) { this.prefix = prefix; }
+        public String getSuffix() { return suffix; }
+        public void setSuffix(String suffix) { this.suffix = suffix; }
     }
 }
