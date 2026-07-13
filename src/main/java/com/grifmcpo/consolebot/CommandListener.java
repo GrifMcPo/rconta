@@ -37,46 +37,8 @@ public class CommandListener implements Listener {
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
                 event.setCancelled(true);
-                // БЛОКИРУЕМ, НАШИ КОМАНДЫ ОТРАБОТАЮТ НИЖЕ
                 return;
             }
-        }
-
-        // ============================================
-        // ==== /report <ник> <причина> =====
-        // ============================================
-        if (command.startsWith("/report ")) {
-            event.setCancelled(true);
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                player.sendMessage("§cИспользуй: /report <ник> <причина>");
-                return;
-            }
-            String target = parts[1];
-            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-
-            if (Bukkit.getPlayerExact(target) == null) {
-                player.sendMessage("§cИгрок " + target + " не найден!");
-                return;
-            }
-            if (player.getName().equalsIgnoreCase(target)) {
-                player.sendMessage("§cНельзя жаловаться на себя!");
-                return;
-            }
-            if (punishmentManager.isMuted(player.getName())) {
-                player.sendMessage("§cВы замучены!");
-                return;
-            }
-
-            player.sendMessage("§a✅ Жалоба на " + target + " отправлена!");
-            player.sendMessage("§7Причина: " + reason);
-
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                if (p.hasPermission("telegramconsolebot.admin") || p.isOp()) {
-                    p.sendMessage("§6[Жалоба] §f" + player.getName() + " → §c" + target + " §7: §e" + reason);
-                }
-            }
-            return;
         }
 
         // ============================================
@@ -101,7 +63,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== КАСТОМНЫЕ БАНЫ (НАШИ!) =====
+        // ==== КАСТОМНЫЕ НАКАЗАНИЯ =====
         // ============================================
 
         // --- /ban ---
