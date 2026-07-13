@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -17,12 +17,10 @@ public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
-    private final ReportsPlugin reportsPlugin;
 
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, ReportsPlugin reportsPlugin) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
-        this.reportsPlugin = reportsPlugin;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -33,44 +31,46 @@ public class CommandListener implements Listener {
         commandLogger.logCommand(player.getName(), event.getMessage());
 
         // ============================================
-        // ==== /report =====
+        // ==== /report <ник> <причина> =====
         // ============================================
         if (command.startsWith("/report ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
             if (parts.length < 3) {
                 player.sendMessage("§cИспользуй: /report <ник> <причина>");
+                player.sendMessage("§7Пример: /report pley1657 читерство");
                 return;
             }
             String target = parts[1];
             String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
 
             if (Bukkit.getPlayerExact(target) == null) {
-                player.sendMessage("§cИгрок " + target + " не найден!");
+                player.sendMessage("§cИгрок " + target + " не найден на сервере!");
                 return;
             }
             if (player.getName().equalsIgnoreCase(target)) {
-                player.sendMessage("§cНельзя жаловаться на себя!");
+                player.sendMessage("§cНельзя жаловаться на самого себя!");
                 return;
             }
             if (punishmentManager.isMuted(player.getName())) {
-                player.sendMessage("§cВы замучены!");
+                player.sendMessage("§cВы не можете отправлять жалобы, так как замучены!");
                 return;
             }
 
-            player.sendMessage("§a✅ Жалоба на " + target + " отправлена!");
+            player.sendMessage("§a✅ Жалоба на игрока " + target + " отправлена!");
             player.sendMessage("§7Причина: " + reason);
 
+            String adminMsg = "§6[Жалоба] §f" + player.getName() + " §7→ §c" + target + " §7: §e" + reason;
             for (Player p : Bukkit.getOnlinePlayers()) {
                 if (p.hasPermission("telegramconsolebot.admin") || p.isOp()) {
-                    p.sendMessage("§6[Жалоба] §f" + player.getName() + " → §c" + target + " §7: §e" + reason);
+                    p.sendMessage(adminMsg);
                 }
             }
             return;
         }
 
         // ============================================
-        // ==== /bc / /bcast =====
+        // ==== /bc / /bcast (объявления от игроков) =====
         // ============================================
         if (command.startsWith("/bc ") || command.startsWith("/bcast ")) {
             event.setCancelled(true);
@@ -81,7 +81,7 @@ public class CommandListener implements Listener {
             }
             String message = String.join(" ", Arrays.copyOfRange(parts, 1, parts.length));
             if (punishmentManager.isMuted(player.getName())) {
-                player.sendMessage("§cВы замучены!");
+                player.sendMessage("§cВы не можете писать объявления, так как замучены!");
                 return;
             }
             String format = "§6[Объявление] §f" + message + " §7(Пишет: " + player.getName() + "§7)";
@@ -91,7 +91,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== БАНЫ =====
+        // ==== /ban =====
         // ============================================
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
@@ -122,7 +122,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== UNBAN =====
+        // ==== /unban =====
         // ============================================
         if (command.startsWith("/unban ")) {
             event.setCancelled(true);
@@ -142,7 +142,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== МУТЫ =====
+        // ==== /mute =====
         // ============================================
         if (command.startsWith("/mute ")) {
             event.setCancelled(true);
@@ -173,7 +173,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== UNMUTE =====
+        // ==== /unmute =====
         // ============================================
         if (command.startsWith("/unmute ")) {
             event.setCancelled(true);
@@ -193,7 +193,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== КИК =====
+        // ==== /kick =====
         // ============================================
         if (command.startsWith("/kick ")) {
             event.setCancelled(true);
@@ -213,7 +213,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== BANLIST (С ПАГИНАЦИЕЙ) =====
+        // ==== /banlist (с пагинацией) =====
         // ============================================
         if (command.equalsIgnoreCase("/banlist") || command.startsWith("/banlist ")) {
             event.setCancelled(true);
@@ -242,7 +242,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== MUTELIST (С ПАГИНАЦИЕЙ) =====
+        // ==== /mutelist (с пагинацией) =====
         // ============================================
         if (command.equalsIgnoreCase("/mutelist") || command.startsWith("/mutelist ")) {
             event.setCancelled(true);
@@ -271,7 +271,7 @@ public class CommandListener implements Listener {
         }
 
         // ============================================
-        // ==== SHIST / HIST (С ПАГИНАЦИЕЙ) =====
+        // ==== /shist /hist (с пагинацией) =====
         // ============================================
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
@@ -296,6 +296,7 @@ public class CommandListener implements Listener {
                 formattedHistory.add(" - " + timeAgo + " -\n   " + target + " был " + entry.getActionName() +
                         " на " + entry.duration + " " + entry.issuer + ": " + entry.reason + " " + status);
             }
+
             List<String> pageItems = paginate(formattedHistory, page, pageSize);
             int totalPages = (int) Math.ceil((double) formattedHistory.size() / pageSize);
 
