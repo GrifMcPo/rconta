@@ -1,4 +1,4 @@
-package com.grifmcpo.reports;
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -22,7 +22,7 @@ public class ReportCommand implements CommandExecutor {
 
         // ===== ОБЪЯВЛЕНИЯ (/bc, /bcast) =====
         if (cmd.equals("bc") || cmd.equals("bcast")) {
-            return handleBroadcast(sender, args, false);
+            return handleBroadcast(sender, args);
         }
 
         // ===== ЖАЛОБЫ =====
@@ -38,11 +38,8 @@ public class ReportCommand implements CommandExecutor {
         return false;
     }
 
-    // ============================================
-    // ==== ОБЪЯВЛЕНИЯ =====
-    // ============================================
-
-    private boolean handleBroadcast(CommandSender sender, String[] args, boolean isRcon) {
+    // ===== ОБЪЯВЛЕНИЯ =====
+    private boolean handleBroadcast(CommandSender sender, String[] args) {
         if (args.length < 1) {
             sender.sendMessage("§cИспользуй: /bc <сообщение>");
             return true;
@@ -50,26 +47,14 @@ public class ReportCommand implements CommandExecutor {
 
         String message = String.join(" ", args);
         String senderName = sender.getName();
-
-        // Если это игрок — проверяем мут
-        if (sender instanceof Player) {
-            Player player = (Player) sender;
-            // Здесь можно добавить проверку на мут
-            // if (isMuted(player.getName())) { ... }
-        }
-
-        String displayName = isRcon ? "§6RCON@" + senderName : "§6" + senderName;
-        String formatted = "§6[Объявление] §f" + message + " §7(Пишет: " + displayName + "§7)";
+        String formatted = "§6[Объявление] §f" + message + " §7(Пишет: " + senderName + "§7)";
         Bukkit.broadcastMessage(formatted);
 
         sender.sendMessage("§a✅ Объявление отправлено!");
         return true;
     }
 
-    // ============================================
-    // ==== ЖАЛОБЫ =====
-    // ============================================
-
+    // ===== ЖАЛОБЫ =====
     private boolean handleReport(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) {
             sender.sendMessage("§cЭта команда только для игроков!");
