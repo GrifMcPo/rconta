@@ -1,9 +1,7 @@
-package com.grifmcpo.reports;
+package com.grifmcpo.consolebot;
 
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -96,16 +94,6 @@ public class ReportManager {
         return new ArrayList<>(reports.values());
     }
 
-    public List<Report> getReportsByStatus(ReportStatus status) {
-        List<Report> result = new ArrayList<>();
-        for (Report report : reports.values()) {
-            if (report.getStatus() == status) {
-                result.add(report);
-            }
-        }
-        return result;
-    }
-
     public boolean takeReport(int id, String assignee) {
         Report report = reports.get(id);
         if (report == null || report.getStatus() != ReportStatus.NEW) {
@@ -127,13 +115,6 @@ public class ReportManager {
         report.setCloseReason(reason);
         saveReports();
         return true;
-    }
-
-    // ===== МЕТОД ДЛЯ ОБЪЯВЛЕНИЙ =====
-    public void sendBroadcast(String sender, String message, boolean isRcon) {
-        String displayName = isRcon ? "§6RCON@" + sender : "§6" + sender;
-        String formatted = "§6[Объявление] §f" + message + " §7(Пишет: " + displayName + "§7)";
-        Bukkit.broadcastMessage(formatted);
     }
 
     public enum ReportStatus {
