@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -21,7 +21,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     private CommandExecutor commandExecutor;
     private PunishmentManager punishmentManager;
     private AdminLogger adminLogger;
-    private RankManager rankManager;
     private BotBanManager botBanManager;
     private TelegramBotHandler botHandler;
 
@@ -44,7 +43,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         commandExecutor = new CommandExecutor(this);
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
-        rankManager = new RankManager(this);
         botBanManager = new BotBanManager(this);
 
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
@@ -52,7 +50,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
-                    commandExecutor, punishmentManager, rankManager, botBanManager);
+                    commandExecutor, punishmentManager, botBanManager);
             botsApi.registerBot(botHandler);
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
@@ -123,7 +121,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public CommandExecutor getCommandExecutor() { return commandExecutor; }
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
     public AdminLogger getAdminLogger() { return adminLogger; }
-    public RankManager getRankManager() { return rankManager; }
     public BotBanManager getBotBanManager() { return botBanManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
 }
