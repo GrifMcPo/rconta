@@ -224,7 +224,12 @@ public class BotBanManager {
         public String getStatus() {
             if (isExpired()) return "❌ Истек";
             if (duration.equals("навсегда")) return "♾️ Навсегда";
-            return "⏳ Активен (осталось: " + getTimeLeft(expires) + ")";
+            return "⏳ Активен";
+        }
+
+        // ИСПРАВЛЕНО: используем переданный объект BotBanManager для вызова getTimeLeft
+        public String getTimeLeft(BotBanManager manager) {
+            return manager.getTimeLeft(expires);
         }
 
         @Override
