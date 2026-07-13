@@ -1,9 +1,0 @@
-
-# Данные игроков
-# Формат:
-# Игрок:
-#   telegramId: "123456789"
-#   uuid: "uuid"
-#   ip: "192.168.1.1"
-#   sessionTime: 0
-#   registered: true
