@@ -15,7 +15,7 @@ public class RankManager {
     private final Map<String, Rank> ranks = new ConcurrentHashMap<>();
     private final Map<Long, String> userRanks = new ConcurrentHashMap<>();
     private final Set<Long> allUsers = ConcurrentHashMap.newKeySet();
-    private final Map<Long, Long> tempRanks = new ConcurrentHashMap<>(); // userId -> expires
+    private final Map<Long, Long> tempRanks = new ConcurrentHashMap<>();
 
     public RankManager(TelegramConsoleBot plugin) {
         this.plugin = plugin;
@@ -41,7 +41,6 @@ public class RankManager {
         allUsers.clear();
         tempRanks.clear();
 
-        // Загружаем всех пользователей
         List<Long> users = rankConfig.getLongList("users");
         allUsers.addAll(users);
 
@@ -50,14 +49,12 @@ public class RankManager {
             
             Rank rank = new Rank(rankName);
             
-            // Внешний вид
             rank.setPrefix(rankConfig.getString(rankName + ".prefix", ""));
             rank.setSuffix(rankConfig.getString(rankName + ".suffix", ""));
             rank.setEmoji(rankConfig.getString(rankName + ".emoji", ""));
             rank.setColor(rankConfig.getString(rankName + ".color", ""));
             rank.setPriority(rankConfig.getInt(rankName + ".priority", 0));
 
-            // Права
             List<Map<?, ?>> permissions = rankConfig.getMapList(rankName + ".permissions");
             for (Map<?, ?> perm : permissions) {
                 String command = (String) perm.get("command");
@@ -67,11 +64,9 @@ public class RankManager {
                 }
             }
 
-            // Наследование
             List<String> inherits = rankConfig.getStringList(rankName + ".inherits");
             rank.setInherits(new HashSet<>(inherits));
 
-            // Пользователи
             List<Long> rankUsers = rankConfig.getLongList(rankName + ".users");
             for (long id : rankUsers) {
                 rank.addUser(id);
@@ -79,20 +74,10 @@ public class RankManager {
                 allUsers.add(id);
             }
 
-            // Временные ранги
-            List<Map<?, ?>> temps = rankConfig.getMapList(rankName + ".temp");
-            for (Map<?, ?> temp : temps) {
-                long userId = ((Number) temp.get("id")).longValue();
-                long expires = ((Number) temp.get("expires")).longValue();
-                tempRanks.put(userId, expires);
-            }
-
             ranks.put(rankName, rank);
         }
 
-        // Удаляем истекшие временные ранги
         checkTempRanks();
-
         plugin.getLogger().info("✅ Загружено рангов: " + ranks.size() + ", пользователей: " + allUsers.size());
     }
 
@@ -118,7 +103,6 @@ public class RankManager {
         }
     }
 
-    // ===== ПРОВЕРКА ВРЕМЕННЫХ РАНГОВ =====
     private void checkTempRanks() {
         long now = System.currentTimeMillis();
         List<Long> toRemove = new ArrayList<>();
@@ -287,10 +271,8 @@ public class RankManager {
         Rank rank = ranks.get(rankName);
         if (rank == null) return false;
         
-        // Проверяем свои права
         if (rank.hasPermission(command)) return true;
         
-        // Проверяем наследование
         for (String inherit : rank.getInherits()) {
             Rank parent = ranks.get(inherit);
             if (parent != null && parent.hasPermission(command)) return true;
@@ -317,6 +299,19 @@ public class RankManager {
         }
         
         return null;
+    }
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ ПРОВЕРКИ ПРАВ =====
+    public boolean hasPermissionToCommand(String rankName, String command) {
+        Rank rank = ranks.get(rankName);
+        if (rank == null) return false;
+        return rank.hasPermission(command);
+    }
+
+    public String getRankCommandLimit(String rankName, String command) {
+        Rank rank = ranks.get(rankName);
+        if (rank == null) return null;
+        return rank.getCommandLimit(command);
     }
 
     // ===== ПОЛЬЗОВАТЕЛИ В РАНГЕ =====
@@ -545,7 +540,7 @@ public class RankManager {
         names.sort((a, b) -> {
             int pa = ranks.get(a).getPriority();
             int pb = ranks.get(b).getPriority();
-            return Integer.compare(pb, pa); // Высший приоритет — первый
+            return Integer.compare(pb, pa);
         });
         return names;
     }
@@ -637,12 +632,30 @@ public class RankManager {
         return stats;
     }
 
+    public String getRankStatsFormatted() {
+        StringBuilder sb = new StringBuilder();
+        Map<String, Integer> stats = getRankStats();
+        int i = 1;
+        for (Map.Entry<String, Integer> entry : stats.entrySet()) {
+            Rank rank = ranks.get(entry.getKey());
+            if (rank == null) continue;
+            String display = rank.getEmoji() + " " + rank.getPrefix();
+            sb.append(i++).append(". ").append(display).append(" — ").append(entry.getValue()).append(" чел.\n");
+        }
+        return sb.toString();
+    }
+
     public int getTotalUsers() {
         return allUsers.size();
     }
 
     public int getTotalRanks() {
         return ranks.size();
+    }
+
+    // ===== ТЕХРАБОТЫ =====
+    public boolean isTechWork() {
+        return plugin.getConfig().getBoolean("maintenance", false);
     }
 
     // ===== КЛАСС РАНГА =====
