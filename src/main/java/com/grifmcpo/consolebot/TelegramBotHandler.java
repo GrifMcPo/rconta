@@ -61,7 +61,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String chatId = update.getCallbackQuery().getMessage().getChatId().toString();
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
-            // --- Кнопка "Ответить" на репорт ---
             if (data.startsWith("reply_")) {
                 String[] parts = data.split("_");
                 String playerName = parts[1];
@@ -72,7 +71,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- Кнопки подтверждения команд ---
             if (data.startsWith("confirm_")) {
                 String[] parts = data.split("_");
                 String action = parts[1];
@@ -120,7 +118,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // --- Пагинация ---
             if (data.startsWith("page_")) {
                 String[] parts = data.split("_");
                 String type = parts[1];
@@ -148,13 +145,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         plugin.getLogger().info("📩 Получено: " + messageText + " от " + userId);
 
-        // --- Проверка техработ ---
         if (rankManager.isTechWork() && !plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
             sendMessage(chatId, "🔧 На сервере ведутся технические работы. Попробуйте позже.");
             return;
         }
 
-        // --- /start ---
         if (messageText.equalsIgnoreCase("/start")) {
             if (!rankManager.getAllUsers().contains(userId)) {
                 rankManager.getAllUsers().add(userId);
@@ -163,13 +158,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !me ---
         if (messageText.equalsIgnoreCase("!me")) {
             sendMe(chatId, userId);
             return;
         }
 
-        // --- Игровые команды ---
         if (messageText.startsWith("!online") || messageText.startsWith("!онлайн")) {
             sendOnline(chatId);
             return;
@@ -190,7 +183,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- !rcon ---
         if (!messageText.startsWith("!rcon")) {
             return;
         }
@@ -209,7 +201,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // --- Обработка команд ---
         handleRconCommand(chatId, command, userId);
     }
 
@@ -294,10 +285,244 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 sender = "RCON@Grif_Mo";
             }
 
+            // Отправляем объявление в чат
             String format = "§6[Объявление] §f" + message + " §7(Пишет: " + sender + "§7)";
             Bukkit.broadcastMessage(format);
 
-            sendMessage(chatId, "✅ Объявление отправлено в чат!");
+            // Бот отправляет ответ — то же самое сообщение, что и в чате
+            sendResponse(chatId, "📢 " + format.replaceAll("§[0-9a-fk-or]", ""));
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon ban (с красивым ответом) =====
+        // ============================================
+        if (command.startsWith("ban ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon ban <ник> [время] <причина>");
+                return;
+            }
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+            if (parts.length > start) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.banPlayer(target, issuer, reason, duration)) {
+                String response = "✅ Игрок " + target + " забанен на " + duration + "\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " уже забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon mute (с красивым ответом) =====
+        // ============================================
+        if (command.startsWith("mute ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon mute <ник> [время] <причина>");
+                return;
+            }
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+            if (parts.length > start) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.mutePlayer(target, issuer, reason, duration)) {
+                String response = "✅ Игрок " + target + " замучен на " + duration + "\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " уже замучен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon kick (с красивым ответом) =====
+        // ============================================
+        if (command.startsWith("kick ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon kick <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.kickPlayer(target, issuer, reason)) {
+                String response = "✅ Игрок " + target + " кикнут!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не найден!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon unban (с красивым ответом) =====
+        // ============================================
+        if (command.startsWith("unban ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon unban <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.unbanPlayer(target, issuer, reason)) {
+                String response = "✅ Игрок " + target + " разбанен!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon unmute (с красивым ответом) =====
+        // ============================================
+        if (command.startsWith("unmute ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon unmute <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.unmutePlayer(target, issuer, reason)) {
+                String response = "✅ Игрок " + target + " размучен!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не замучен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon banlist =====
+        // ============================================
+        if (command.equalsIgnoreCase("banlist") || command.startsWith("banlist ")) {
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+            List<String> bans = punishmentManager.getBanList(page, pageSize);
+            int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
+
+            if (bans.isEmpty()) {
+                sendResponse(chatId, "📋 Список банов пуст.");
+            } else {
+                StringBuilder response = new StringBuilder();
+                response.append("📋 Список банов (Страница ").append(page).append("/").append(totalPages).append(")");
+                for (String ban : bans) {
+                    response.append("\n\n").append(ban);
+                }
+                if (totalPages > 1) {
+                    response.append("\n\n📌 Используй: !rcon banlist ").append(page + 1);
+                }
+                sendResponse(chatId, response.toString());
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon mutelist =====
+        // ============================================
+        if (command.equalsIgnoreCase("mutelist") || command.startsWith("mutelist ")) {
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
+            int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
+
+            if (mutes.isEmpty()) {
+                sendResponse(chatId, "📋 Список мутов пуст.");
+            } else {
+                StringBuilder response = new StringBuilder();
+                response.append("📋 Список мутов (Страница ").append(page).append("/").append(totalPages).append(")");
+                for (String mute : mutes) {
+                    response.append("\n\n").append(mute);
+                }
+                if (totalPages > 1) {
+                    response.append("\n\n📌 Используй: !rcon mutelist ").append(page + 1);
+                }
+                sendResponse(chatId, response.toString());
+            }
             return;
         }
 
@@ -537,7 +762,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== ОПАСНЫЕ КОМАНДЫ =====
+        // ==== ОПАСНЫЕ КОМАНДЫ (С ПРОВЕРКОЙ ПРАВ) =====
         // ============================================
         String[] dangerous = {"ban ", "mute ", "kick ", "unban ", "unmute "};
         for (String d : dangerous) {
@@ -685,7 +910,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             String response = commandExecutor.executeCommand(finalCommand, finalIssuer);
-            
+
             if (finalTempMsgId != 0) {
                 deleteMessage(String.valueOf(finalChatId), finalTempMsgId);
             }
@@ -733,11 +958,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                        type.equals("mutelist") ? "Список мутов" :
                        "История наказаний для " + playerName;
         response.append("📋 ").append(title).append(" (Страница ").append(page).append("/").append(totalPages).append(")");
-        
+
         for (String item : pageItems) {
             response.append("\n\n").append(item);
         }
-        
+
         response.append("\n\n📊 Всего записей: ").append(items.size());
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -767,7 +992,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
-        msg.setText("[БОТ] 📋 " + response.toString());
+        msg.setText("[БОТ] " + response.toString());
         if (!rows.isEmpty()) {
             msg.setReplyMarkup(markup);
         }
@@ -781,9 +1006,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     // ============================================
     // ==== ОТПРАВКА КРАСИВЫХ ОТВЕТОВ =====
     // ============================================
-    
+
     private void sendResponse(long chatId, String text) {
-        sendMessage(chatId, "[БОТ] " + text);
+        sendMessage(chatId, "[БОТ] Ответ сервера:\n" + text);
     }
 
     public void sendMessage(long chatId, String text) {
