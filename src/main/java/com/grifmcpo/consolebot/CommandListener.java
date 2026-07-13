@@ -1,5 +1,6 @@
 package com.grifmcpo.consolebot;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -16,10 +17,12 @@ public class CommandListener implements Listener {
 
     private final CommandLogger commandLogger;
     private final PunishmentManager punishmentManager;
+    private final ReportsPlugin reportsPlugin;
 
-    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager) {
+    public CommandListener(CommandLogger commandLogger, PunishmentManager punishmentManager, ReportsPlugin reportsPlugin) {
         this.commandLogger = commandLogger;
         this.punishmentManager = punishmentManager;
+        this.reportsPlugin = reportsPlugin;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -29,7 +32,67 @@ public class CommandListener implements Listener {
 
         commandLogger.logCommand(player.getName(), event.getMessage());
 
-        // --- /ban ---
+        // ============================================
+        // ==== /report =====
+        // ============================================
+        if (command.startsWith("/report ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                player.sendMessage("§cИспользуй: /report <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            if (Bukkit.getPlayerExact(target) == null) {
+                player.sendMessage("§cИгрок " + target + " не найден!");
+                return;
+            }
+            if (player.getName().equalsIgnoreCase(target)) {
+                player.sendMessage("§cНельзя жаловаться на себя!");
+                return;
+            }
+            if (punishmentManager.isMuted(player.getName())) {
+                player.sendMessage("§cВы замучены!");
+                return;
+            }
+
+            player.sendMessage("§a✅ Жалоба на " + target + " отправлена!");
+            player.sendMessage("§7Причина: " + reason);
+
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.hasPermission("telegramconsolebot.admin") || p.isOp()) {
+                    p.sendMessage("§6[Жалоба] §f" + player.getName() + " → §c" + target + " §7: §e" + reason);
+                }
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== /bc / /bcast =====
+        // ============================================
+        if (command.startsWith("/bc ") || command.startsWith("/bcast ")) {
+            event.setCancelled(true);
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                player.sendMessage("§cИспользуй: /bc <сообщение>");
+                return;
+            }
+            String message = String.join(" ", Arrays.copyOfRange(parts, 1, parts.length));
+            if (punishmentManager.isMuted(player.getName())) {
+                player.sendMessage("§cВы замучены!");
+                return;
+            }
+            String format = "§6[Объявление] §f" + message + " §7(Пишет: " + player.getName() + "§7)";
+            Bukkit.broadcastMessage(format);
+            player.sendMessage("§a✅ Объявление отправлено!");
+            return;
+        }
+
+        // ============================================
+        // ==== БАНЫ =====
+        // ============================================
         if (command.startsWith("/ban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -41,18 +104,15 @@ public class CommandListener implements Listener {
             String duration = "навсегда";
             String reason = "";
             int start = 2;
-
             if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
                 duration = parts[2];
                 start = 3;
             }
-
             if (parts.length > start) {
                 reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
             } else {
                 reason = "Без причины";
             }
-
             if (punishmentManager.banPlayer(target, player.getName(), reason, duration)) {
                 player.sendMessage("§aИгрок " + target + " забанен на " + duration);
             } else {
@@ -61,7 +121,9 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /unban ---
+        // ============================================
+        // ==== UNBAN =====
+        // ============================================
         if (command.startsWith("/unban ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -79,7 +141,9 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /mute ---
+        // ============================================
+        // ==== МУТЫ =====
+        // ============================================
         if (command.startsWith("/mute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -91,18 +155,15 @@ public class CommandListener implements Listener {
             String duration = "навсегда";
             String reason = "";
             int start = 2;
-
             if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
                 duration = parts[2];
                 start = 3;
             }
-
             if (parts.length > start) {
                 reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
             } else {
                 reason = "Без причины";
             }
-
             if (punishmentManager.mutePlayer(target, player.getName(), reason, duration)) {
                 player.sendMessage("§aИгрок " + target + " замучен на " + duration);
             } else {
@@ -111,7 +172,9 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /unmute ---
+        // ============================================
+        // ==== UNMUTE =====
+        // ============================================
         if (command.startsWith("/unmute ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -129,7 +192,9 @@ public class CommandListener implements Listener {
             return;
         }
 
-        // --- /kick ---
+        // ============================================
+        // ==== КИК =====
+        // ============================================
         if (command.startsWith("/kick ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -139,16 +204,17 @@ public class CommandListener implements Listener {
             }
             String target = parts[1];
             String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-
             if (punishmentManager.kickPlayer(target, player.getName(), reason)) {
                 player.sendMessage("§aИгрок " + target + " кикнут!");
             } else {
-                player.sendMessage("§cИгрок " + target + " не найден на сервере!");
+                player.sendMessage("§cИгрок " + target + " не найден!");
             }
             return;
         }
 
-        // --- /banlist ---
+        // ============================================
+        // ==== BANLIST (С ПАГИНАЦИЕЙ) =====
+        // ============================================
         if (command.equalsIgnoreCase("/banlist") || command.startsWith("/banlist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -159,7 +225,7 @@ public class CommandListener implements Listener {
             int pageSize = 10;
             List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
             List<String> bans = punishmentManager.getBanList(page, pageSize);
-            int totalPages = punishmentManager.getTotalPages(allBans.size(), pageSize);
+            int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
 
             if (bans.isEmpty()) {
                 player.sendMessage("§eБанов нет.");
@@ -169,13 +235,15 @@ public class CommandListener implements Listener {
                     player.sendMessage("§f" + ban);
                 }
                 if (totalPages > 1) {
-                    player.sendMessage("§7Используй: /banlist " + (page + 1) + " для следующей страницы");
+                    player.sendMessage("§7Используй: /banlist " + (page + 1));
                 }
             }
             return;
         }
 
-        // --- /mutelist ---
+        // ============================================
+        // ==== MUTELIST (С ПАГИНАЦИЕЙ) =====
+        // ============================================
         if (command.equalsIgnoreCase("/mutelist") || command.startsWith("/mutelist ")) {
             event.setCancelled(true);
             int page = 1;
@@ -186,7 +254,7 @@ public class CommandListener implements Listener {
             int pageSize = 10;
             List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
             List<String> mutes = punishmentManager.getMuteList(page, pageSize);
-            int totalPages = punishmentManager.getTotalPages(allMutes.size(), pageSize);
+            int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
 
             if (mutes.isEmpty()) {
                 player.sendMessage("§eМутов нет.");
@@ -196,13 +264,15 @@ public class CommandListener implements Listener {
                     player.sendMessage("§f" + mute);
                 }
                 if (totalPages > 1) {
-                    player.sendMessage("§7Используй: /mutelist " + (page + 1) + " для следующей страницы");
+                    player.sendMessage("§7Используй: /mutelist " + (page + 1));
                 }
             }
             return;
         }
 
-        // --- /shist /hist ---
+        // ============================================
+        // ==== SHIST / HIST (С ПАГИНАЦИЕЙ) =====
+        // ============================================
         if (command.startsWith("/shist ") || command.startsWith("/hist ")) {
             event.setCancelled(true);
             String[] parts = command.split(" ");
@@ -219,7 +289,6 @@ public class CommandListener implements Listener {
 
             List<PunishmentManager.HistoryEntry> allHistory = punishmentManager.getHistory(target);
             List<String> formattedHistory = new ArrayList<>();
-
             for (PunishmentManager.HistoryEntry entry : allHistory) {
                 String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
                 String status = entry.type.equals("ban") ? (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
@@ -227,26 +296,27 @@ public class CommandListener implements Listener {
                 formattedHistory.add(" - " + timeAgo + " -\n   " + target + " был " + entry.getActionName() +
                         " на " + entry.duration + " " + entry.issuer + ": " + entry.reason + " " + status);
             }
-
             List<String> pageItems = paginate(formattedHistory, page, pageSize);
             int totalPages = (int) Math.ceil((double) formattedHistory.size() / pageSize);
 
             if (pageItems.isEmpty()) {
                 player.sendMessage("§eИстория для " + target + " пуста.");
             } else {
-                player.sendMessage("§6=== История наказаний для " + target + " (Страница " + page + "/" + totalPages + ") ===");
+                player.sendMessage("§6=== История для " + target + " (Стр. " + page + "/" + totalPages + ") ===");
                 for (String entry : pageItems) {
                     player.sendMessage("§f" + entry);
                 }
                 if (totalPages > 1) {
-                    player.sendMessage("§7Используй: /shist " + target + " " + (page + 1) + " для следующей страницы");
+                    player.sendMessage("§7/shist " + target + " " + (page + 1));
                 }
-                player.sendMessage("§7Всего записей: " + formattedHistory.size());
+                player.sendMessage("§7Всего: " + formattedHistory.size());
             }
             return;
         }
 
-        // --- БЛОКИРУЕМ FLECTONEPULSE ---
+        // ============================================
+        // ==== БЛОКИРУЕМ КОМАНДЫ FLECTONEPULSE =====
+        // ============================================
         String[] blocked = {"/ban", "/tempban", "/unban", "/mute", "/tempmute", "/unmute", "/kick", "/warn", "/unwarn", "/jail", "/unjail"};
         for (String b : blocked) {
             if (command.startsWith(b) || command.startsWith("flectonepulse:" + b)) {
@@ -258,6 +328,9 @@ public class CommandListener implements Listener {
         }
     }
 
+    // ============================================
+    // ==== БЛОКИРОВКА ЧАТА ПРИ МУТЕ =====
+    // ============================================
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -271,12 +344,18 @@ public class CommandListener implements Listener {
         }
     }
 
+    // ============================================
+    // ==== ПРОВЕРКА ПРИ ВХОДЕ =====
+    // ============================================
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         punishmentManager.checkOnJoin(player);
     }
 
+    // ============================================
+    // ==== ПАГИНАЦИЯ =====
+    // ============================================
     private List<String> paginate(List<String> items, int page, int pageSize) {
         int start = (page - 1) * pageSize;
         int end = Math.min(start + pageSize, items.size());
