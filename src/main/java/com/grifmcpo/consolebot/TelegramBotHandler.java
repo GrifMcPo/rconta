@@ -26,13 +26,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
     private final RankManager rankManager;
+    private final GroupManager groupManager;
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
                               CommandExecutor commandExecutor, PunishmentManager punishmentManager,
-                              RankManager rankManager) {
+                              RankManager rankManager, GroupManager groupManager) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
@@ -41,6 +42,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
         this.rankManager = rankManager;
+        this.groupManager = groupManager;
     }
 
     @Override
@@ -56,7 +58,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         // ============================================
-        // ==== КНОПКИ =====
+        // ==== КНОПКИ (CallbackQuery) =====
         // ============================================
         if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
@@ -135,7 +137,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== СООБЩЕНИЯ =====
+        // ==== СООБЩЕНИЯ (Message) =====
         // ============================================
         if (!update.hasMessage() || !update.getMessage().hasText()) {
             return;
