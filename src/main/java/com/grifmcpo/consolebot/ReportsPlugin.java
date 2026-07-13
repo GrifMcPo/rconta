@@ -1,4 +1,4 @@
-package com.grifmcpo.reports;
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -25,7 +25,8 @@ public class ReportsPlugin extends JavaPlugin {
         getCommand("bc").setExecutor(new ReportCommand(this));
         getCommand("bcast").setExecutor(new ReportCommand(this));
 
-        Bukkit.getPluginManager().registerEvents(new ReportListener(this), this);
+        // Исправлено: правильный класс
+        Bukkit.getPluginManager().registerEvents(new ReportListener(), this);
 
         getLogger().info("✅ ReportsPlugin загружен успешно!");
     }
