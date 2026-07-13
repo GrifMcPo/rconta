@@ -1,6 +1,6 @@
 name: ReportsPlugin
 version: 1.0
-main: com.grifmcpo.reports.ReportsPlugin
+main: com.grifmcpo.consolebot.ReportsPlugin
 api-version: 1.21
 author: GrifMcPo
 description: Система жалоб и объявлений
