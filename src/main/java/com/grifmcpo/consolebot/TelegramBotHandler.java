@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -25,8 +26,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
     private final RankManager rankManager;
-
-    private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
@@ -111,7 +110,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 }
 
                 deleteMessage(chatId, messageId);
-                sendFormattedResponse(Long.parseLong(chatId), result);
+                sendResponse(Long.parseLong(chatId), result);
                 return;
             }
 
@@ -233,7 +232,54 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== !rcon bc / !rcon bcast (ОБЪЯВЛЕНИЯ) =====
+        // ==== !rcon shist / !rcon hist =====
+        // ============================================
+        if (command.startsWith("shist ") || command.startsWith("hist ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon shist <ник>");
+                return;
+            }
+            String target = parts[1];
+
+            List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(target);
+
+            if (history.isEmpty()) {
+                sendResponse(chatId, "📋 История наказаний для " + target + " пуста.");
+                return;
+            }
+
+            StringBuilder response = new StringBuilder();
+            response.append("📋 История наказаний игрока ").append(target).append(" (Записей: ").append(history.size()).append(")");
+
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+
+            int count = 0;
+            for (PunishmentManager.HistoryEntry entry : history) {
+                if (count >= 20) {
+                    response.append("\n\n... и ещё ").append(history.size() - 20).append(" записей");
+                    break;
+                }
+                String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
+                String date = sdf.format(new java.util.Date(entry.timestamp));
+                String status = entry.type.equals("ban") ?
+                    (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
+                    (punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]");
+                String actionName = entry.getActionName();
+
+                response.append("\n\n - ").append(timeAgo).append(" -");
+                response.append("\n   ").append(target).append(" был ").append(actionName)
+                        .append(" на ").append(entry.duration).append(" ")
+                        .append(entry.issuer).append(": ").append(entry.reason).append(" ").append(status);
+                count++;
+            }
+
+            sendResponse(chatId, response.toString());
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon bc / !rcon bcast =====
         // ============================================
         if (command.startsWith("bc ") || command.startsWith("bcast ")) {
             String[] parts = command.split(" ");
@@ -243,13 +289,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             String message = String.join(" ", Arrays.copyOfRange(parts, 1, parts.length));
 
-            // Получаем отправителя из admins.yml
             String sender = plugin.getCustomSender(userId);
             if (sender == null && userId == plugin.getOwnerId()) {
                 sender = "RCON@Grif_Mo";
             }
 
-            // Отправляем объявление в чат
             String format = "§6[Объявление] §f" + message + " §7(Пишет: " + sender + "§7)";
             Bukkit.broadcastMessage(format);
 
@@ -274,7 +318,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             String rankName = parts[2];
             if (rankManager.createRank(rankName)) {
-                sendFormattedResponse(chatId, "✅ Ранг " + rankName + " создан!");
+                sendResponse(chatId, "✅ Ранг " + rankName + " создан!");
             } else {
                 sendMessage(chatId, "❌ Ранг " + rankName + " уже существует.");
             }
@@ -294,7 +338,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             String rankName = parts[2];
             if (rankManager.deleteRank(rankName)) {
-                sendFormattedResponse(chatId, "✅ Ранг " + rankName + " удалён!");
+                sendResponse(chatId, "✅ Ранг " + rankName + " удалён!");
             } else {
                 sendMessage(chatId, "❌ Ранг " + rankName + " не найден.");
             }
@@ -317,7 +361,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String limit = parts.length > 4 ? parts[4] : "навсегда";
 
             if (rankManager.addPermission(rankName, cmd, limit)) {
-                sendFormattedResponse(chatId, "✅ Рангу " + rankName + " выдана команда " + cmd + " (лимит: " + limit + ")");
+                sendResponse(chatId, "✅ Рангу " + rankName + " выдана команда " + cmd + " (лимит: " + limit + ")");
             } else {
                 sendMessage(chatId, "❌ Ранг " + rankName + " не найден.");
             }
@@ -339,7 +383,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String cmd = parts[3];
 
             if (rankManager.removePermission(rankName, cmd)) {
-                sendFormattedResponse(chatId, "✅ У ранга " + rankName + " удалена команда " + cmd);
+                sendResponse(chatId, "✅ У ранга " + rankName + " удалена команда " + cmd);
             } else {
                 sendMessage(chatId, "❌ Ранг " + rankName + " не найден.");
             }
@@ -367,7 +411,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
 
             if (rankManager.addUserToRank(rankName, targetId)) {
-                sendFormattedResponse(chatId, "✅ Пользователь " + targetId + " добавлен в ранг " + rankName);
+                sendResponse(chatId, "✅ Пользователь " + targetId + " добавлен в ранг " + rankName);
                 sendMessage(targetId, "🔰 Вас добавили в ранг " + rankName + "!");
             } else {
                 sendMessage(chatId, "❌ Ранг " + rankName + " не найден.");
@@ -397,7 +441,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             String oldRank = rankManager.getUserRank(targetId);
             if (rankManager.removeUserFromRank(targetId, reason)) {
-                sendFormattedResponse(chatId, "✅ Пользователь " + targetId + " удалён из ранга " + oldRank);
+                sendResponse(chatId, "✅ Пользователь " + targetId + " удалён из ранга " + oldRank);
                 sendMessage(targetId, "🔰 Вас сняли с ранга " + oldRank + "!\n📝 Причина: " + reason);
             } else {
                 sendMessage(chatId, "❌ Пользователь не найден в рангах.");
@@ -413,21 +457,21 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             List<String> rankNames = rankManager.getRankNames();
             if (rankNames.isEmpty()) {
-                sendFormattedResponse(chatId, "📋 Рангов нет.");
+                sendResponse(chatId, "📋 Рангов нет.");
             } else {
                 StringBuilder response = new StringBuilder();
-                response.append("📋 Список рангов:\n");
+                response.append("📋 Список рангов:");
                 for (String name : rankNames) {
                     RankManager.Rank rank = rankManager.getRank(name);
-                    response.append("• ").append(name).append(" (Пользователей: ").append(rank.getUsers().size()).append(")\n");
+                    response.append("\n\n• ").append(name).append(" (Пользователей: ").append(rank.getUsers().size()).append(")");
                     if (!rank.getPermissions().isEmpty()) {
-                        response.append("  Права:\n");
+                        response.append("\n  Права:");
                         for (Map.Entry<String, String> perm : rank.getPermissions().entrySet()) {
-                            response.append("    - ").append(perm.getKey()).append(" (лимит: ").append(perm.getValue()).append(")\n");
+                            response.append("\n    - ").append(perm.getKey()).append(" (лимит: ").append(perm.getValue()).append(")");
                         }
                     }
                 }
-                sendFormattedResponse(chatId, response.toString());
+                sendResponse(chatId, response.toString());
             }
             return;
         }
@@ -440,15 +484,15 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             List<Long> allUsers = rankManager.getAllUsers();
             if (allUsers.isEmpty()) {
-                sendFormattedResponse(chatId, "📋 Нет пользователей.");
+                sendResponse(chatId, "📋 Нет пользователей.");
             } else {
                 StringBuilder response = new StringBuilder();
-                response.append("📋 Все пользователи (").append(allUsers.size()).append("):\n");
+                response.append("📋 Все пользователи (").append(allUsers.size()).append("):");
                 for (long id : allUsers) {
                     String rank = rankManager.getUserRank(id);
-                    response.append("• ").append(id).append(" → ").append(rank != null ? rank : "Без ранга").append("\n");
+                    response.append("\n• ").append(id).append(" → ").append(rank != null ? rank : "Без ранга");
                 }
-                sendFormattedResponse(chatId, response.toString());
+                sendResponse(chatId, response.toString());
             }
             return;
         }
@@ -470,7 +514,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     // игнорируем
                 }
             }
-            sendFormattedResponse(chatId, "✅ Сообщение отправлено " + count + " пользователям.");
+            sendResponse(chatId, "✅ Сообщение отправлено " + count + " пользователям.");
             return;
         }
 
@@ -488,12 +532,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             boolean state = parts[1].equalsIgnoreCase("on");
             plugin.getConfig().set("maintenance", state);
             plugin.saveConfig();
-            sendFormattedResponse(chatId, state ? "🔧 Техработы ВКЛЮЧЕНЫ" : "✅ Техработы ВЫКЛЮЧЕНЫ");
+            sendResponse(chatId, state ? "🔧 Техработы ВКЛЮЧЕНЫ" : "✅ Техработы ВЫКЛЮЧЕНЫ");
             return;
         }
 
         // ============================================
-        // ==== ОПАСНЫЕ КОМАНДЫ (С ПРОВЕРКОЙ ПРАВ) =====
+        // ==== ОПАСНЫЕ КОМАНДЫ =====
         // ============================================
         String[] dangerous = {"ban ", "mute ", "kick ", "unban ", "unmute "};
         for (String d : dangerous) {
@@ -608,7 +652,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
-        msg.setText("[БОТ] " + message);
+        msg.setText("[БОТ] ⚠️ " + message);
         msg.setReplyMarkup(markup);
 
         try {
@@ -632,7 +676,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         try {
             SendMessage temp = new SendMessage();
             temp.setChatId(String.valueOf(chatId));
-            temp.setText("[БОТ] Выполняю команду..");
+            temp.setText("[БОТ] ⏳ Выполняю команду...");
             var sent = execute(temp);
             tempMsgId[0] = sent.getMessageId();
         } catch (Exception e) {}
@@ -641,13 +685,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             String response = commandExecutor.executeCommand(finalCommand, finalIssuer);
-            String formatted = "[БОТ] Ответ сервера:\n" + SEPARATOR + "\n" + response + "\n" + SEPARATOR;
-
+            
             if (finalTempMsgId != 0) {
                 deleteMessage(String.valueOf(finalChatId), finalTempMsgId);
             }
 
-            sendMessage(finalChatId, formatted);
+            sendResponse(finalChatId, "✅ " + response);
         });
     }
 
@@ -669,7 +712,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     String status = entry.type.equals("ban") ?
                         (punishmentManager.isBanned(playerName) ? "[Активен]" : "[Истек]") :
                         (punishmentManager.isMuted(playerName) ? "[Активен]" : "[Истек]");
-                    items.add(" - " + timeAgo + " -\n   " + playerName + " был " + entry.getActionName() +
+                    items.add("- " + timeAgo + " -\n   " + playerName + " был " + entry.getActionName() +
                             " на " + entry.duration + " " + entry.issuer + ": " + entry.reason + " " + status);
                 }
                 break;
@@ -689,13 +732,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String title = type.equals("banlist") ? "Список банов" :
                        type.equals("mutelist") ? "Список мутов" :
                        "История наказаний для " + playerName;
-        response.append("📋 ").append(title).append(" (Страница ").append(page).append("/").append(totalPages).append(")\n");
-        response.append(SEPARATOR).append("\n");
+        response.append("📋 ").append(title).append(" (Страница ").append(page).append("/").append(totalPages).append(")");
+        
         for (String item : pageItems) {
-            response.append(item).append("\n");
+            response.append("\n\n").append(item);
         }
-        response.append(SEPARATOR).append("\n");
-        response.append("📊 Всего записей: ").append(items.size());
+        
+        response.append("\n\n📊 Всего записей: ").append(items.size());
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -724,7 +767,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
-        msg.setText("[БОТ] Ответ сервера:\n" + response.toString());
+        msg.setText("[БОТ] 📋 " + response.toString());
         if (!rows.isEmpty()) {
             msg.setReplyMarkup(markup);
         }
@@ -736,8 +779,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     }
 
     // ============================================
-    // ==== ПУБЛИЧНЫЙ МЕТОД ДЛЯ ОТПРАВКИ =====
+    // ==== ОТПРАВКА КРАСИВЫХ ОТВЕТОВ =====
     // ============================================
+    
+    private void sendResponse(long chatId, String text) {
+        sendMessage(chatId, "[БОТ] " + text);
+    }
+
     public void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -760,11 +808,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
     }
 
-    private void sendFormattedResponse(long chatId, String text) {
-        String message = "[БОТ] Ответ сервера:\n" + SEPARATOR + "\n" + text + "\n" + SEPARATOR;
-        sendMessage(chatId, message);
-    }
-
     // ============================================
     // ==== ИГРОВЫЕ КОМАНДЫ =====
     // ============================================
@@ -777,14 +820,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             players.append("• ").append(p.getName()).append("\n");
         }
         String msg = "👥 Онлайн: " + online + "/" + max + "\n\n" + players.toString();
-        sendFormattedResponse(chatId, msg);
+        sendResponse(chatId, msg);
     }
 
     private void sendTps(long chatId) {
         double tps = Bukkit.getTPS()[0];
         String status = tps >= 20 ? "🟢 Отлично" : tps >= 18 ? "🟡 Хорошо" : tps >= 15 ? "🟠 Средне" : "🔴 Плохо";
         String msg = "⚡ TPS: " + String.format("%.2f", tps) + "\n📊 Статус: " + status;
-        sendFormattedResponse(chatId, msg);
+        sendResponse(chatId, msg);
     }
 
     private void sendHelp(long chatId) {
@@ -801,10 +844,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!rcon kick <ник> <причина>\n" +
                 "!rcon banlist [страница]\n" +
                 "!rcon mutelist [страница]\n" +
-                "!rcon shist <ник> [страница]\n" +
+                "!rcon shist <ник>\n" +
+                "!rcon hist <ник>\n" +
                 "!rcon logs <ник> [дней]\n" +
                 "!rcon bc <сообщение> — объявление";
-        sendFormattedResponse(chatId, help);
+        sendResponse(chatId, help);
     }
 
     private void sendInfo(long chatId) {
@@ -814,12 +858,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String msg = "🖥️ Информация о сервере:\n\n" +
                 "📌 Версия: " + version + "\n" +
                 "👥 Игроки: " + online + "/" + max;
-        sendFormattedResponse(chatId, msg);
+        sendResponse(chatId, msg);
     }
 
     private void sendWelcome(long chatId) {
-        String welcome = "🎮 Добро пожаловать!\n" +
-                SEPARATOR + "\n" +
+        String welcome = "🎮 Добро пожаловать!\n\n" +
                 "💡 Команды: !online, !tps, !me, !help";
         sendMessage(chatId, welcome);
     }
@@ -830,13 +873,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String rank = rankManager.getUserRank(userId);
         String rankStr = rank != null ? rank : "Без ранга";
 
-        String response = "📋 Информация о вас:\n" +
-                SEPARATOR + "\n" +
+        String response = "📋 Информация о вас:\n\n" +
                 "🆔 Telegram ID: " + telegramId + "\n" +
                 "👑 Админ: " + isAdmin + "\n" +
-                "🔰 Ранг: " + rankStr + "\n" +
-                SEPARATOR;
-
-        sendFormattedResponse(chatId, response);
+                "🔰 Ранг: " + rankStr;
+        sendResponse(chatId, response);
     }
 }
