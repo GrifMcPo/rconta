@@ -45,7 +45,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
 
-        // ТОЛЬКО 2 АРГУМЕНТА — НИКАКИХ РЕПОРТОВ!
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
@@ -67,6 +66,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         if (commandExecutor != null) commandExecutor.close();
     }
 
+    // ===== ЗАГРУЗКА АДМИНОВ =====
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
         if (!adminsFile.exists()) saveResource("admins.yml", false);
@@ -102,6 +102,14 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
+    // ===== ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ОТ ИМЕНИ БОТА =====
+    public void sendMessageAsBot(long chatId, String text) {
+        if (botHandler != null) {
+            botHandler.sendMessage(chatId, text);
+        }
+    }
+
+    // ===== ГЕТТЕРЫ =====
     public Map<String, String> getAdmins() { return admins; }
     public long getOwnerId() { return ownerId; }
     public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
