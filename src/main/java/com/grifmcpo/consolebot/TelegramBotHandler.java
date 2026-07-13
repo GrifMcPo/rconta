@@ -26,13 +26,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
     private final RankManager rankManager;
+    private final BotBanManager botBanManager;
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
                               CommandExecutor commandExecutor, PunishmentManager punishmentManager,
-                              RankManager rankManager) {
+                              RankManager rankManager, BotBanManager botBanManager) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
@@ -41,6 +42,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
         this.rankManager = rankManager;
+        this.botBanManager = botBanManager;
     }
 
     @Override
@@ -150,6 +152,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         // Сохраняем пользователя
         rankManager.addUser(userId);
 
+        // ============================================
+        // ==== ПРОВЕРКА БАНА В БОТЕ =====
+        // ============================================
+        if (botBanManager.isBanned(userId)) {
+            // Владелец и админы не могут быть забанены
+            if (userId != plugin.getOwnerId() && !plugin.isAdmin(userId)) {
+                sendMessage(chatId, botBanManager.getBanMessage(userId));
+                return;
+            }
+        }
+
         if (rankManager.isTechWork() && !plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
             sendMessage(chatId, "🔧 На сервере ведутся технические работы. Попробуйте позже.");
             return;
@@ -239,6 +252,215 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     // ==== ОБРАБОТКА RCON КОМАНД =====
     // ============================================
     private void handleRconCommand(long chatId, String command, long userId) {
+        // ============================================
+        // ==== !rcon botban =====
+        // ============================================
+        if (command.startsWith("botban ")) {
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ Только админы могут банить в боте.");
+                return;
+            }
+
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon botban <айди> [время] <причина>\n" +
+                        "Пример: !rcon botban 123456789 7d спам\n" +
+                        "Пример: !rcon botban 123456789 навсегда флуд");
+                return;
+            }
+
+            long targetId;
+            try {
+                targetId = Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "❌ Неверный ID!");
+                return;
+            }
+
+            if (targetId == plugin.getOwnerId()) {
+                sendMessage(chatId, "❌ Нельзя забанить владельца бота!");
+                return;
+            }
+
+            if (plugin.isAdmin(targetId)) {
+                sendMessage(chatId, "❌ Нельзя забанить админа бота!");
+                return;
+            }
+
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+
+            if (parts.length > 2 && (parts[2].matches("\\d+[smhdwMy]") || parts[2].equals("навсегда"))) {
+                duration = parts[2];
+                start = 3;
+            }
+
+            if (parts.length > start) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
+            } else {
+                reason = "Без причины";
+            }
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null) issuer = "RCON";
+
+            if (botBanManager.banUser(targetId, reason, duration, issuer)) {
+                sendResponse(chatId, "✅ Пользователь " + targetId + " забанен в боте!\n" +
+                        "📝 Причина: " + reason + "\n" +
+                        "⏱ Срок: " + duration);
+            } else {
+                sendMessage(chatId, "❌ Пользователь " + targetId + " уже забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon botunban =====
+        // ============================================
+        if (command.startsWith("botunban ")) {
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ Только админы могут разбанивать в боте.");
+                return;
+            }
+
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon botunban <айди> <причина>\n" +
+                        "Пример: !rcon botunban 123456789 ошибка");
+                return;
+            }
+
+            long targetId;
+            try {
+                targetId = Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "❌ Неверный ID!");
+                return;
+            }
+
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null) issuer = "RCON";
+
+            if (botBanManager.unbanUser(targetId, reason, issuer)) {
+                sendResponse(chatId, "✅ Пользователь " + targetId + " разбанен в боте!\n" +
+                        "📝 Причина снятия: " + reason);
+            } else {
+                sendMessage(chatId, "❌ Пользователь " + targetId + " не забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon botbanlist =====
+        // ============================================
+        if (command.equalsIgnoreCase("botbanlist") || command.startsWith("botbanlist ")) {
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ Доступ запрещён.");
+                return;
+            }
+
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
+            }
+
+            List<BotBanManager.BanData> allBans = botBanManager.getAllBans();
+            int pageSize = 10;
+            int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
+            if (page < 1) page = 1;
+            if (page > totalPages && totalPages > 0) page = totalPages;
+
+            if (allBans.isEmpty()) {
+                sendResponse(chatId, "📋 Список банов в боте пуст.");
+                return;
+            }
+
+            int start = (page - 1) * pageSize;
+            int end = Math.min(start + pageSize, allBans.size());
+
+            StringBuilder response = new StringBuilder();
+            response.append("📋 БАНЫ В БОТЕ (Страница ").append(page).append("/").append(totalPages).append(")\n\n");
+
+            for (int i = start; i < end; i++) {
+                BotBanManager.BanData ban = allBans.get(i);
+                response.append("🆔 ").append(ban.userId).append("\n");
+                response.append("📝 ").append(ban.reason).append("\n");
+                response.append("⏱ ").append(ban.duration).append(" (").append(ban.getStatus()).append(")\n");
+                response.append("👤 ").append(ban.issuer).append("\n");
+                response.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            }
+
+            if (totalPages > 1) {
+                response.append("\n📌 !rcon botbanlist ").append(page + 1).append(" — следующая страница");
+            }
+
+            sendResponse(chatId, response.toString());
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon botbaninfo =====
+        // ============================================
+        if (command.startsWith("botbaninfo ")) {
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ Доступ запрещён.");
+                return;
+            }
+
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon botbaninfo <айди>");
+                return;
+            }
+
+            long targetId;
+            try {
+                targetId = Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "❌ Неверный ID!");
+                return;
+            }
+
+            BotBanManager.BanData ban = botBanManager.getBanData(targetId);
+            if (ban == null) {
+                sendMessage(chatId, "❌ Пользователь " + targetId + " не забанен!");
+                return;
+            }
+
+            sendResponse(chatId, "📋 ИНФОРМАЦИЯ О БАНЕ В БОТЕ\n\n" + ban.toString());
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon botbancheck (публичная) =====
+        // ============================================
+        if (command.startsWith("botbancheck ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon botbancheck <айди>");
+                return;
+            }
+
+            long targetId;
+            try {
+                targetId = Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                sendMessage(chatId, "❌ Неверный ID!");
+                return;
+            }
+
+            if (botBanManager.isBanned(targetId)) {
+                sendResponse(chatId, "⛔ Пользователь " + targetId + " ЗАБАНЕН в боте!");
+            } else {
+                sendResponse(chatId, "✅ Пользователь " + targetId + " НЕ забанен в боте.");
+            }
+            return;
+        }
+
         // ============================================
         // ==== !rcon logs =====
         // ============================================
@@ -805,7 +1027,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String[] dangerous = {"ban ", "mute ", "kick ", "unban ", "unmute "};
         for (String d : dangerous) {
             if (command.startsWith(d)) {
-                // Проверка уже была в начале, но дублируем для безопасности
                 if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                     String rankName = rankManager.getUserRank(userId);
                     if (rankName == null) {
@@ -1119,7 +1340,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!rcon rang <название> remove <команда>\n" +
                 "!rcon rang addid <название> <айди>\n" +
                 "!rcon rang remid <айди> <причина>\n" +
-                "!rcon rang list";
+                "!rcon rang list\n\n" +
+                "⛔ Бан в боте (админы):\n" +
+                "!rcon botban <айди> [время] <причина>\n" +
+                "!rcon botunban <айди> <причина>\n" +
+                "!rcon botbanlist\n" +
+                "!rcon botbaninfo <айди>\n" +
+                "!rcon botbancheck <айди> (публичная)";
         sendResponse(chatId, help);
     }
 
@@ -1144,11 +1371,31 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String isAdmin = plugin.isAdmin(userId) ? "✅ Да" : "❌ Нет";
         String rank = rankManager.getUserRank(userId);
         String rankStr = rank != null ? rank : "Без ранга";
+        boolean isBanned = botBanManager.isBanned(userId);
 
         String response = "📋 Информация о вас:\n\n" +
                 "🆔 Telegram ID: " + telegramId + "\n" +
                 "👑 Админ: " + isAdmin + "\n" +
-                "🔰 Ранг: " + rankStr;
+                "🔰 Ранг: " + rankStr + "\n" +
+                "⛔ Бан в боте: " + (isBanned ? "❌ ДА" : "✅ НЕТ");
+
+        if (isBanned) {
+            BotBanManager.BanData ban = botBanManager.getBanData(userId);
+            response += "\n\n📝 Причина бана: " + ban.reason;
+            response += "\n⏱ Осталось: " + (ban.duration.equals("навсегда") ? "навсегда" : getTimeLeft(ban.expires));
+            response += "\n👤 Выдал: " + ban.issuer;
+        }
+
         sendResponse(chatId, response);
+    }
+
+    private String getTimeLeft(long expires) {
+        if (expires == -1) return "навсегда";
+        long diff = expires - System.currentTimeMillis();
+        if (diff <= 0) return "истек";
+        long days = diff / (24 * 60 * 60 * 1000);
+        long hours = (diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000);
+        if (days > 0) return days + "д " + hours + "ч";
+        return hours + "ч";
     }
 }
