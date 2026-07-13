@@ -22,6 +22,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private PunishmentManager punishmentManager;
     private AdminLogger adminLogger;
     private RankManager rankManager;
+    private GroupManager groupManager;
     private TelegramBotHandler botHandler;
 
     @Override
@@ -44,13 +45,14 @@ public class TelegramConsoleBot extends JavaPlugin {
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
+        groupManager = new GroupManager(this);
 
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
-                    commandExecutor, punishmentManager, rankManager);
+                    commandExecutor, punishmentManager, rankManager, groupManager);
             botsApi.registerBot(botHandler);
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
@@ -122,5 +124,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
     public AdminLogger getAdminLogger() { return adminLogger; }
     public RankManager getRankManager() { return rankManager; }
+    public GroupManager getGroupManager() { return groupManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
 }
