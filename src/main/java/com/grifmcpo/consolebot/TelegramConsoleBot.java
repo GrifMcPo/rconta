@@ -23,6 +23,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private AdminLogger adminLogger;
     private RankManager rankManager;
     private TelegramBotHandler botHandler;
+    private ReportsPlugin reportsPlugin;
 
     @Override
     public void onEnable() {
@@ -44,8 +45,10 @@ public class TelegramConsoleBot extends JavaPlugin {
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
         rankManager = new RankManager(this);
+        reportsPlugin = new ReportsPlugin(this);
 
-        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
+        // Исправлено: передаём 3 аргумента
+        Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager, reportsPlugin), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
@@ -113,5 +116,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
     public AdminLogger getAdminLogger() { return adminLogger; }
     public RankManager getRankManager() { return rankManager; }
+    public ReportsPlugin getReportsPlugin() { return reportsPlugin; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
 }
