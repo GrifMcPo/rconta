@@ -15,6 +15,7 @@ public class RankManager {
     private FileConfiguration rankConfig;
     private final Map<String, Rank> ranks = new ConcurrentHashMap<>();
     private final Map<Long, String> userRanks = new ConcurrentHashMap<>();
+    private final Set<Long> allUsers = ConcurrentHashMap.newKeySet();
 
     public RankManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -24,7 +25,11 @@ public class RankManager {
     private void loadRanks() {
         rankFile = new File(plugin.getDataFolder(), "ranks.yml");
         if (!rankFile.exists()) {
-            try { rankFile.createNewFile(); } catch (Exception e) {}
+            try {
+                rankFile.createNewFile();
+            } catch (Exception e) {
+                plugin.getLogger().severe("❌ Не удалось создать ranks.yml");
+            }
         }
         rankConfig = YamlConfiguration.loadConfiguration(rankFile);
         loadRanksFromConfig();
@@ -33,6 +38,11 @@ public class RankManager {
     private void loadRanksFromConfig() {
         ranks.clear();
         userRanks.clear();
+        allUsers.clear();
+
+        // Загружаем всех пользователей
+        List<Long> users = rankConfig.getLongList("users");
+        allUsers.addAll(users);
 
         for (String rankName : rankConfig.getKeys(false)) {
             if (rankName.equals("users")) continue;
@@ -47,15 +57,17 @@ public class RankManager {
                 }
             }
 
-            List<Long> users = rankConfig.getLongList(rankName + ".users");
-            for (long id : users) {
+            List<Long> rankUsers = rankConfig.getLongList(rankName + ".users");
+            for (long id : rankUsers) {
                 rank.addUser(id);
                 userRanks.put(id, rankName);
+                allUsers.add(id);
             }
+
             ranks.put(rankName, rank);
         }
 
-        plugin.getLogger().info("✅ Загружено рангов: " + ranks.size() + ", пользователей: " + userRanks.size());
+        plugin.getLogger().info("✅ Загружено рангов: " + ranks.size() + ", пользователей: " + allUsers.size());
     }
 
     public void saveRanks() {
@@ -64,13 +76,30 @@ public class RankManager {
             rankConfig.set(rankName + ".permissions", rank.getPermissionsList());
             rankConfig.set(rankName + ".users", new ArrayList<>(rank.getUsers()));
         }
-        try { rankConfig.save(rankFile); } catch (Exception e) {}
+        rankConfig.set("users", new ArrayList<>(allUsers));
+        try {
+            rankConfig.save(rankFile);
+        } catch (Exception e) {
+            plugin.getLogger().severe("❌ Ошибка сохранения ranks.yml: " + e.getMessage());
+        }
     }
 
-    public boolean isTechWork() {
-        return plugin.getConfig().getBoolean("maintenance", false);
+    // ===== ПОЛЬЗОВАТЕЛИ =====
+    public void addUser(long telegramId) {
+        if (allUsers.add(telegramId)) {
+            saveRanks();
+        }
     }
 
+    public List<Long> getAllUsers() {
+        return new ArrayList<>(allUsers);
+    }
+
+    public boolean isUserExists(long telegramId) {
+        return allUsers.contains(telegramId);
+    }
+
+    // ===== РАНГИ =====
     public boolean createRank(String name) {
         if (ranks.containsKey(name)) return false;
         Rank rank = new Rank(name);
@@ -82,7 +111,9 @@ public class RankManager {
     public boolean deleteRank(String name) {
         if (!ranks.containsKey(name)) return false;
         Rank rank = ranks.get(name);
-        for (long id : rank.getUsers()) userRanks.remove(id);
+        for (long id : rank.getUsers()) {
+            userRanks.remove(id);
+        }
         ranks.remove(name);
         rankConfig.set(name, null);
         saveRanks();
@@ -117,6 +148,7 @@ public class RankManager {
 
         rank.addUser(telegramId);
         userRanks.put(telegramId, rankName);
+        allUsers.add(telegramId);
         saveRanks();
         return true;
     }
@@ -125,7 +157,9 @@ public class RankManager {
         String rankName = userRanks.get(telegramId);
         if (rankName == null) return false;
         Rank rank = ranks.get(rankName);
-        if (rank != null) rank.removeUser(telegramId);
+        if (rank != null) {
+            rank.removeUser(telegramId);
+        }
         userRanks.remove(telegramId);
         saveRanks();
         return true;
@@ -143,6 +177,7 @@ public class RankManager {
         return new ArrayList<>(ranks.keySet());
     }
 
+    // ===== ПРОВЕРКА ПРАВ =====
     public boolean hasPermission(long telegramId, String command) {
         String rankName = userRanks.get(telegramId);
         if (rankName == null) return false;
@@ -159,14 +194,11 @@ public class RankManager {
         return rank.getCommandLimit(command);
     }
 
-    public List<Long> getAllUsers() {
-        return new ArrayList<>(userRanks.keySet());
+    public boolean isTechWork() {
+        return plugin.getConfig().getBoolean("maintenance", false);
     }
 
-    public Map<Long, String> getUserRanks() {
-        return userRanks;
-    }
-
+    // ===== КЛАСС РАНГА =====
     public static class Rank {
         private final String name;
         private final Map<String, String> permissions = new HashMap<>();
