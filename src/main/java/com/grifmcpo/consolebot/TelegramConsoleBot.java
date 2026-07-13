@@ -49,6 +49,7 @@ public class TelegramConsoleBot extends JavaPlugin {
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+            // ИСПРАВЛЕНО: убран RankManager
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
                     commandExecutor, punishmentManager, botBanManager);
             botsApi.registerBot(botHandler);
