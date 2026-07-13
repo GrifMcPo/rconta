@@ -1,6 +1,37 @@
-name: TelegramConsoleBot
+name: ReportsPlugin
 version: 1.0
-main: com.grifmcpo.consolebot.TelegramConsoleBot
+main: com.grifmcpo.reports.ReportsPlugin
 api-version: 1.21
 author: GrifMcPo
-description: Бот для управления сервером через Telegram
+description: Система жалоб и объявлений
+
+commands:
+  # ==== ЖАЛОБЫ ====
+  report:
+    description: Отправить жалобу
+    usage: /report <ник> <причина>
+  reports:
+    description: Просмотр жалоб
+    usage: /reports
+    permission: reports.admin
+  reporttake:
+    description: Взять жалобу в работу
+    usage: /report take <ID>
+    permission: reports.admin
+  reportclose:
+    description: Закрыть жалобу
+    usage: /report close <ID> <причина>
+    permission: reports.admin
+
+  # ==== ОБЪЯВЛЕНИЯ ====
+  bc:
+    description: Отправить объявление
+    usage: /bc <сообщение>
+  bcast:
+    description: Отправить объявление
+    usage: /bcast <сообщение>
+
+permissions:
+  reports.admin:
+    description: Доступ к админ-командам жалоб
+    default: op
