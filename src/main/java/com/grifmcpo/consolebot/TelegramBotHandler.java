@@ -29,7 +29,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     // ============================================
     // ==== КТО ВИДИТ СКРЫТЫЕ НАКАЗАНИЯ (-s) =====
     // ============================================
-    // Видят: staff, leader, sponsor, OP
     private final List<Long> hiddenViewers = new ArrayList<>();
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
@@ -47,23 +46,20 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.punishmentManager = punishmentManager;
         this.botBanManager = botBanManager;
         
-        // Загружаем кто видит скрытые наказания
         loadHiddenViewers();
     }
 
     private void loadHiddenViewers() {
         hiddenViewers.clear();
         
-        // 1. Владелец всегда видит
+        // Владелец всегда видит
         hiddenViewers.add(plugin.getOwnerId());
         
-        // 2. Все админы из admins.yml видят
+        // Все админы из admins.yml видят
         for (String id : plugin.getAdmins().keySet()) {
             try {
                 hiddenViewers.add(Long.parseLong(id));
-            } catch (NumberFormatException e) {
-                // Игнорируем
-            }
+            } catch (NumberFormatException e) {}
         }
         
         // ============================================
@@ -78,21 +74,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         plugin.getLogger().info("✅ Загружено зрителей скрытых наказаний: " + hiddenViewers.size());
     }
 
-    // ===== ПРОВЕРКА МОЖЕТ ЛИ ВИДЕТЬ СКРЫТОЕ =====
     public boolean canSeeHidden(long userId) {
         return hiddenViewers.contains(userId);
     }
 
-    // ===== УВЕДОМЛЕНИЕ ТОЛЬКО ДЛЯ ВИДЯЩИХ =====
     private void notifyStaffOnly(String message) {
         int count = 0;
         for (long id : hiddenViewers) {
             try {
                 sendMessage(id, "[СТАФФ] " + message);
                 count++;
-            } catch (Exception e) {
-                // Игнорируем
-            }
+            } catch (Exception e) {}
         }
         plugin.getLogger().info("🔒 Скрытое уведомление отправлено " + count + " пользователям");
     }
@@ -269,8 +261,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private void handleRconCommand(long chatId, String command, long userId) {
 
         // ============================================
-        // ==== !rcon messageall =====
+        // ==== КАСТОМНЫЕ КОМАНДЫ (ОБРАБАТЫВАЕМ В БОТЕ) =====
         // ============================================
+
+        // --- !rcon messageall ---
         if (command.startsWith("messageall ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Только админы могут рассылать сообщения.");
@@ -290,16 +284,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             
             String formattedMessage = "📢 " + message;
             
-            // Отправляем всем пользователям (кто писал боту)
-            // В этом случае просто шлём всем кто в hiddenViewers и админам
             int count = 0;
             for (long id : hiddenViewers) {
                 try {
                     sendMessage(id, formattedMessage);
                     count++;
-                } catch (Exception e) {
-                    // Игнорируем
-                }
+                } catch (Exception e) {}
             }
             
             sendResponse(chatId, "✅ Сообщение отправлено " + count + " пользователям!\n" +
@@ -307,19 +297,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon ban (С ПОДДЕРЖКОЙ -s) =====
-        // ============================================
+        // --- !rcon ban (с -s) ---
         if (command.startsWith("ban ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon ban <ник> [время] <причина> [-s]\n" +
-                        "Пример: !rcon ban pley1657 7d читы\n" +
-                        "Скрытый: !rcon ban pley1657 7d читы -s");
+                sendMessage(chatId, "❌ Используй: !rcon ban <ник> [время] <причина> [-s]");
                 return;
             }
             
-            // Проверяем флаг -s
             boolean hidden = false;
             String lastArg = parts[parts.length - 1];
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
@@ -376,15 +361,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon mute (С ПОДДЕРЖКОЙ -s) =====
-        // ============================================
+        // --- !rcon mute (с -s) ---
         if (command.startsWith("mute ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon mute <ник> [время] <причина> [-s]\n" +
-                        "Пример: !rcon mute pley1657 1h спам\n" +
-                        "Скрытый: !rcon mute pley1657 1h спам -s");
+                sendMessage(chatId, "❌ Используй: !rcon mute <ник> [время] <причина> [-s]");
                 return;
             }
             
@@ -393,8 +374,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
                 hidden = true;
                 if (!canSeeHidden(userId)) {
-                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
-                            "🔒 Скрытые видят только: staff, leader, sponsor, OP");
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!");
                     return;
                 }
             }
@@ -444,15 +424,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon kick (С ПОДДЕРЖКОЙ -s) =====
-        // ============================================
+        // --- !rcon kick (с -s) ---
         if (command.startsWith("kick ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon kick <ник> <причина> [-s]\n" +
-                        "Пример: !rcon kick pley1657 нарушение\n" +
-                        "Скрытый: !rcon kick pley1657 нарушение -s");
+                sendMessage(chatId, "❌ Используй: !rcon kick <ник> <причина> [-s]");
                 return;
             }
             
@@ -461,8 +437,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
                 hidden = true;
                 if (!canSeeHidden(userId)) {
-                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
-                            "🔒 Скрытые видят только: staff, leader, sponsor, OP");
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!");
                     return;
                 }
             }
@@ -498,9 +473,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon unban =====
-        // ============================================
+        // --- !rcon unban ---
         if (command.startsWith("unban ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
@@ -527,9 +500,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon unmute =====
-        // ============================================
+        // --- !rcon unmute ---
         if (command.startsWith("unmute ")) {
             String[] parts = command.split(" ");
             if (parts.length < 3) {
@@ -556,9 +527,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon banlist =====
-        // ============================================
+        // --- !rcon banlist ---
         if (command.equalsIgnoreCase("banlist") || command.startsWith("banlist ")) {
             int page = 1;
             String[] parts = command.split(" ");
@@ -586,9 +555,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon mutelist =====
-        // ============================================
+        // --- !rcon mutelist ---
         if (command.equalsIgnoreCase("mutelist") || command.startsWith("mutelist ")) {
             int page = 1;
             String[] parts = command.split(" ");
@@ -616,9 +583,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon shist / !rcon hist =====
-        // ============================================
+        // --- !rcon shist / hist ---
         if (command.startsWith("shist ") || command.startsWith("hist ")) {
             String[] parts = command.split(" ");
             if (parts.length < 2) {
@@ -662,9 +627,19 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon bc / !rcon bcast =====
-        // ============================================
+        // --- !rcon logs ---
+        if (command.startsWith("logs ")) {
+            String[] args = command.split(" ");
+            SendMessage response = logsCommand.handleLogs(chatId, args);
+            try {
+                execute(response);
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
+            return;
+        }
+
+        // --- !rcon bc / bcast ---
         if (command.startsWith("bc ") || command.startsWith("bcast ")) {
             String[] parts = command.split(" ");
             if (parts.length < 2) {
@@ -685,23 +660,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon logs =====
-        // ============================================
-        if (command.startsWith("logs ")) {
-            String[] args = command.split(" ");
-            SendMessage response = logsCommand.handleLogs(chatId, args);
-            try {
-                execute(response);
-            } catch (TelegramApiException e) {
-                e.printStackTrace();
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon tex =====
-        // ============================================
+        // --- !rcon tex ---
         if (command.startsWith("tex ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Только владелец может включать техработы.");
@@ -719,9 +678,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon botban =====
-        // ============================================
+        // --- !rcon botban ---
         if (command.startsWith("botban ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Только админы могут банить в боте.");
@@ -730,8 +687,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             String[] parts = command.split(" ");
             if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon botban <айди> [время] <причина>\n" +
-                        "Пример: !rcon botban 123456789 7d спам");
+                sendMessage(chatId, "❌ Используй: !rcon botban <айди> [время] <причина>");
                 return;
             }
 
@@ -781,9 +737,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon botunban =====
-        // ============================================
+        // --- !rcon botunban ---
         if (command.startsWith("botunban ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Только админы могут разбанивать в боте.");
@@ -792,8 +746,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
             String[] parts = command.split(" ");
             if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon botunban <айди> <причина>\n" +
-                        "Пример: !rcon botunban 123456789 ошибка");
+                sendMessage(chatId, "❌ Используй: !rcon botunban <айди> <причина>");
                 return;
             }
 
@@ -819,9 +772,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon botbanlist =====
-        // ============================================
+        // --- !rcon botbanlist ---
         if (command.equalsIgnoreCase("botbanlist") || command.startsWith("botbanlist ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Доступ запрещён.");
@@ -868,9 +819,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon botbaninfo =====
-        // ============================================
+        // --- !rcon botbaninfo ---
         if (command.startsWith("botbaninfo ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
                 sendMessage(chatId, "⛔ Доступ запрещён.");
@@ -901,9 +850,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             return;
         }
 
-        // ============================================
-        // ==== !rcon botbancheck (публичная) =====
-        // ============================================
+        // --- !rcon botbancheck (публичная) ---
         if (command.startsWith("botbancheck ")) {
             String[] parts = command.split(" ");
             if (parts.length < 2) {
@@ -928,9 +875,34 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== НЕИЗВЕСТНАЯ КОМАНДА =====
+        // ==== ВСЕ ОСТАЛЬНЫЕ КОМАНДЫ (ОТПРАВЛЯЕМ НА СЕРВЕР) =====
         // ============================================
-        sendMessage(chatId, "❌ Неизвестная команда. Используй !help");
+        // Теперь ЛЮБАЯ команда, которая не обработалась выше,
+        // отправляется на сервер через RCON!
+        executeServerCommand(chatId, command, userId);
+    }
+
+    // ============================================
+    // ==== ОТПРАВКА КОМАНДЫ НА СЕРВЕР (RCON) =====
+    // ============================================
+    private void executeServerCommand(long chatId, String command, long userId) {
+        String issuer = plugin.getCustomSender(userId);
+        if (issuer == null && userId == plugin.getOwnerId()) {
+            issuer = "RCON@Grif_Mo";
+        }
+
+        final long finalChatId = chatId;
+        final String finalCommand = command;
+        final String finalIssuer = issuer;
+
+        // Показываем "Выполняю..."
+        sendMessage(chatId, "[БОТ] ⏳ Выполняю команду на сервере...");
+
+        // Выполняем в синхронном потоке
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            String response = commandExecutor.executeCommand(finalCommand, finalIssuer);
+            sendResponse(finalChatId, "✅ " + response);
+        });
     }
 
     // ============================================
@@ -996,38 +968,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
-    }
-
-    private void executeNormalCommand(long chatId, String command, long userId) {
-        String issuer = plugin.getCustomSender(userId);
-        if (issuer == null && userId == plugin.getOwnerId()) {
-            issuer = "RCON@Grif_Mo";
-        }
-
-        final long finalChatId = chatId;
-        final String finalCommand = command;
-        final String finalIssuer = issuer;
-
-        final int[] tempMsgId = {0};
-        try {
-            SendMessage temp = new SendMessage();
-            temp.setChatId(String.valueOf(chatId));
-            temp.setText("[БОТ] ⏳ Выполняю команду...");
-            var sent = execute(temp);
-            tempMsgId[0] = sent.getMessageId();
-        } catch (Exception e) {}
-
-        final int finalTempMsgId = tempMsgId[0];
-
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            String response = commandExecutor.executeCommand(finalCommand, finalIssuer);
-
-            if (finalTempMsgId != 0) {
-                deleteMessage(String.valueOf(finalChatId), finalTempMsgId);
-            }
-
-            sendResponse(finalChatId, "✅ " + response);
-        });
     }
 
     private void handlePagination(long chatId, String type, String playerName, int page, int messageId) {
@@ -1174,7 +1114,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!tps — производительность\n" +
                 "!me — информация о вас\n" +
                 "!help — эта справка\n\n" +
-                "📌 НАКАЗАНИЯ:\n" +
+                "📌 КАСТОМНЫЕ КОМАНДЫ (бот):\n" +
                 "!rcon ban <ник> [время] <причина> [-s]\n" +
                 "!rcon unban <ник> <причина>\n" +
                 "!rcon mute <ник> [время] <причина> [-s]\n" +
@@ -1183,15 +1123,18 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!rcon banlist — список банов\n" +
                 "!rcon mutelist — список мутов\n" +
                 "!rcon shist <ник> — история\n" +
-                "!rcon bc <сообщение> — объявление\n\n" +
+                "!rcon bc <сообщение> — объявление\n" +
+                "!rcon messageall <сообщение> — рассылка\n" +
+                "!rcon tex on/off — техработы\n\n" +
                 "📌 БАН В БОТЕ:\n" +
                 "!rcon botban <айди> [время] <причина>\n" +
                 "!rcon botunban <айди> <причина>\n" +
                 "!rcon botbanlist\n" +
                 "!rcon botbaninfo <айди>\n\n" +
-                "📌 АДМИН:\n" +
-                "!rcon messageall <сообщение> — рассылка\n" +
-                "!rcon tex on/off — техработы\n\n" +
+                "📌 ЛЮБАЯ ДРУГАЯ КОМАНДА:\n" +
+                "!rcon <любая команда> — отправится на сервер\n" +
+                "Пример: !rcon op pley1657\n" +
+                "Пример: !rcon deop pley1657\n\n" +
                 "🔒 СКРЫТЫЕ НАКАЗАНИЯ (-s):\n" +
                 "Видят только: staff, leader, sponsor, OP";
         sendMessage(chatId, help);
