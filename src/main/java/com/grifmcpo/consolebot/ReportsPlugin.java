@@ -25,7 +25,6 @@ public class ReportsPlugin extends JavaPlugin {
         getCommand("bc").setExecutor(new ReportCommand(this));
         getCommand("bcast").setExecutor(new ReportCommand(this));
 
-        // Исправлено: правильный класс
         Bukkit.getPluginManager().registerEvents(new ReportListener(), this);
 
         getLogger().info("✅ ReportsPlugin загружен успешно!");
