@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -14,7 +14,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 public class TelegramBotHandler extends TelegramLongPollingBot {
 
@@ -25,15 +24,20 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final LogsCommand logsCommand;
     private final CommandExecutor commandExecutor;
     private final PunishmentManager punishmentManager;
-    private final RankManager rankManager;
     private final BotBanManager botBanManager;
+
+    // ============================================
+    // ==== КТО ВИДИТ СКРЫТЫЕ НАКАЗАНИЯ (-s) =====
+    // ============================================
+    // Видят: staff, leader, sponsor, OP
+    private final List<Long> hiddenViewers = new ArrayList<>();
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
                               CommandExecutor commandExecutor, PunishmentManager punishmentManager,
-                              RankManager rankManager, BotBanManager botBanManager) {
+                              BotBanManager botBanManager) {
         this.botToken = token;
         this.plugin = plugin;
         this.playerManager = playerManager;
@@ -41,8 +45,56 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.logsCommand = logsCommand;
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
-        this.rankManager = rankManager;
         this.botBanManager = botBanManager;
+        
+        // Загружаем кто видит скрытые наказания
+        loadHiddenViewers();
+    }
+
+    private void loadHiddenViewers() {
+        hiddenViewers.clear();
+        
+        // 1. Владелец всегда видит
+        hiddenViewers.add(plugin.getOwnerId());
+        
+        // 2. Все админы из admins.yml видят
+        for (String id : plugin.getAdmins().keySet()) {
+            try {
+                hiddenViewers.add(Long.parseLong(id));
+            } catch (NumberFormatException e) {
+                // Игнорируем
+            }
+        }
+        
+        // ============================================
+        // ==== ТУТ ДОБАВЛЯЕМ ID КТО ВИДИТ -s =====
+        // ==== (staff, leader, sponsor, OP) =====
+        // ============================================
+        // hiddenViewers.add(123456789L); // staff
+        // hiddenViewers.add(987654321L); // leader
+        // hiddenViewers.add(555555555L); // sponsor
+        // hiddenViewers.add(111111111L); // OP
+        
+        plugin.getLogger().info("✅ Загружено зрителей скрытых наказаний: " + hiddenViewers.size());
+    }
+
+    // ===== ПРОВЕРКА МОЖЕТ ЛИ ВИДЕТЬ СКРЫТОЕ =====
+    public boolean canSeeHidden(long userId) {
+        return hiddenViewers.contains(userId);
+    }
+
+    // ===== УВЕДОМЛЕНИЕ ТОЛЬКО ДЛЯ ВИДЯЩИХ =====
+    private void notifyStaffOnly(String message) {
+        int count = 0;
+        for (long id : hiddenViewers) {
+            try {
+                sendMessage(id, "[СТАФФ] " + message);
+                count++;
+            } catch (Exception e) {
+                // Игнорируем
+            }
+        }
+        plugin.getLogger().info("🔒 Скрытое уведомление отправлено " + count + " пользователям");
     }
 
     @Override
@@ -149,9 +201,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         plugin.getLogger().info("📩 Получено: " + messageText + " от " + userId);
 
-        // Сохраняем пользователя
-        rankManager.addUser(userId);
-
         // ============================================
         // ==== ПРОВЕРКА БАНА В БОТЕ =====
         // ============================================
@@ -160,11 +209,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 sendMessage(chatId, botBanManager.getBanMessage(userId));
                 return;
             }
-        }
-
-        if (rankManager.isTechWork() && !plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-            sendMessage(chatId, "🔧 На сервере ведутся технические работы. Попробуйте позже.");
-            return;
         }
 
         if (messageText.equalsIgnoreCase("/start")) {
@@ -208,43 +252,15 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== ПРОВЕРКА ПРАВ =====
+        // ==== ПРОВЕРКА ПРАВ (ТОЛЬКО АДМИНЫ) =====
         // ============================================
         if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-            String rankName = rankManager.getUserRank(userId);
-            if (rankName == null) {
-                sendMessage(chatId, "⛔ У вас нет доступа к этой команде!");
-                return;
-            }
-            String fullCommand = "!rcon " + command.split(" ")[0];
-            if (!rankManager.hasPermission(userId, fullCommand)) {
-                sendMessage(chatId, "⛔ У вашего ранга \"" + rankName + "\" нет доступа к команде " + fullCommand);
-                return;
-            }
+            sendMessage(chatId, "⛔ У вас нет доступа к RCON командам!");
+            return;
         }
 
         // --- Обработка команд ---
         handleRconCommand(chatId, command, userId);
-    }
-
-    // ============================================
-    // ==== ПРОВЕРКА ПРАВ ПЕРЕД КАЖДОЙ КОМАНДОЙ =====
-    // ============================================
-    private boolean checkRankPermission(long userId, String command, long chatId) {
-        if (plugin.isAdmin(userId) || userId == plugin.getOwnerId()) {
-            return true;
-        }
-        String rankName = rankManager.getUserRank(userId);
-        if (rankName == null) {
-            sendMessage(chatId, "⛔ У вас нет доступа к этой команде!");
-            return false;
-        }
-        String fullCommand = "!rcon " + command.split(" ")[0];
-        if (!rankManager.hasPermission(userId, fullCommand)) {
-            sendMessage(chatId, "⛔ У вашего ранга \"" + rankName + "\" нет доступа к команде " + fullCommand);
-            return false;
-        }
-        return true;
     }
 
     // ============================================
@@ -253,7 +269,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private void handleRconCommand(long chatId, String command, long userId) {
 
         // ============================================
-        // ==== !rcon messageall (С ПРЕФИКСОМ РАНГА) =====
+        // ==== !rcon messageall =====
         // ============================================
         if (command.startsWith("messageall ")) {
             if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
@@ -267,24 +283,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
             
-            // Получаем ранг отправителя
-            String rankDisplay = rankManager.getFullRankDisplay(userId);
             String senderName = plugin.getCustomSender(userId);
             if (senderName == null && userId == plugin.getOwnerId()) {
                 senderName = "Владелец";
             }
             
-            // Формируем красивое сообщение с рангом
-            String formattedMessage = "";
-            if (!rankDisplay.isEmpty()) {
-                formattedMessage += rankDisplay + "\n";
-            }
-            formattedMessage += "📢 " + message;
+            String formattedMessage = "📢 " + message;
             
-            // Отправляем всем
-            List<Long> allUsers = rankManager.getAllUsers();
+            // Отправляем всем пользователям (кто писал боту)
+            // В этом случае просто шлём всем кто в hiddenViewers и админам
             int count = 0;
-            for (long id : allUsers) {
+            for (long id : hiddenViewers) {
                 try {
                     sendMessage(id, formattedMessage);
                     count++;
@@ -293,9 +302,420 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 }
             }
             
-            // Подтверждение для админа
             sendResponse(chatId, "✅ Сообщение отправлено " + count + " пользователям!\n" +
-                    "👤 Отправитель: " + rankDisplay + " " + senderName);
+                    "👤 Отправитель: " + senderName);
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon ban (С ПОДДЕРЖКОЙ -s) =====
+        // ============================================
+        if (command.startsWith("ban ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon ban <ник> [время] <причина> [-s]\n" +
+                        "Пример: !rcon ban pley1657 7d читы\n" +
+                        "Скрытый: !rcon ban pley1657 7d читы -s");
+                return;
+            }
+            
+            // Проверяем флаг -s
+            boolean hidden = false;
+            String lastArg = parts[parts.length - 1];
+            if (lastArg.equals("-s") || lastArg.equals("-S")) {
+                hidden = true;
+                if (!canSeeHidden(userId)) {
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
+                            "🔒 Скрытые видят только: staff, leader, sponsor, OP");
+                    return;
+                }
+            }
+            
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+            int end = hidden ? parts.length - 1 : parts.length;
+            
+            if (end > start + 1 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+            
+            if (end > start) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, end));
+            } else {
+                reason = "Без причины";
+            }
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.banPlayer(target, issuer, reason, duration)) {
+                String response = "✅ Игрок " + target + " забанен на " + duration + "\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                
+                if (hidden) {
+                    response += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ БАН\n" +
+                            "👤 Игрок: " + target + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "⏱ Срок: " + duration + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " уже забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon mute (С ПОДДЕРЖКОЙ -s) =====
+        // ============================================
+        if (command.startsWith("mute ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon mute <ник> [время] <причина> [-s]\n" +
+                        "Пример: !rcon mute pley1657 1h спам\n" +
+                        "Скрытый: !rcon mute pley1657 1h спам -s");
+                return;
+            }
+            
+            boolean hidden = false;
+            String lastArg = parts[parts.length - 1];
+            if (lastArg.equals("-s") || lastArg.equals("-S")) {
+                hidden = true;
+                if (!canSeeHidden(userId)) {
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
+                            "🔒 Скрытые видят только: staff, leader, sponsor, OP");
+                    return;
+                }
+            }
+            
+            String target = parts[1];
+            String duration = "навсегда";
+            String reason = "";
+            int start = 2;
+            int end = hidden ? parts.length - 1 : parts.length;
+            
+            if (end > start + 1 && punishmentManager.isValidTime(parts[2])) {
+                duration = parts[2];
+                start = 3;
+            }
+            
+            if (end > start) {
+                reason = String.join(" ", Arrays.copyOfRange(parts, start, end));
+            } else {
+                reason = "Без причины";
+            }
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.mutePlayer(target, issuer, reason, duration)) {
+                String response = "✅ Игрок " + target + " замучен на " + duration + "\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                
+                if (hidden) {
+                    response += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ МУТ\n" +
+                            "👤 Игрок: " + target + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "⏱ Срок: " + duration + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " уже замучен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon kick (С ПОДДЕРЖКОЙ -s) =====
+        // ============================================
+        if (command.startsWith("kick ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon kick <ник> <причина> [-s]\n" +
+                        "Пример: !rcon kick pley1657 нарушение\n" +
+                        "Скрытый: !rcon kick pley1657 нарушение -s");
+                return;
+            }
+            
+            boolean hidden = false;
+            String lastArg = parts[parts.length - 1];
+            if (lastArg.equals("-s") || lastArg.equals("-S")) {
+                hidden = true;
+                if (!canSeeHidden(userId)) {
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
+                            "🔒 Скрытые видят только: staff, leader, sponsor, OP");
+                    return;
+                }
+            }
+            
+            String target = parts[1];
+            int end = hidden ? parts.length - 1 : parts.length;
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, end));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.kickPlayer(target, issuer, reason)) {
+                String response = "✅ Игрок " + target + " кикнут!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason;
+                
+                if (hidden) {
+                    response += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ КИК\n" +
+                            "👤 Игрок: " + target + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                
+                sendResponse(chatId, response);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не найден!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon unban =====
+        // ============================================
+        if (command.startsWith("unban ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon unban <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.unbanPlayer(target, issuer, reason)) {
+                sendResponse(chatId, "✅ Игрок " + target + " разбанен!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не забанен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon unmute =====
+        // ============================================
+        if (command.startsWith("unmute ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 3) {
+                sendMessage(chatId, "❌ Используй: !rcon unmute <ник> <причина>");
+                return;
+            }
+            String target = parts[1];
+            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
+
+            String issuer = plugin.getCustomSender(userId);
+            if (issuer == null && userId == plugin.getOwnerId()) {
+                issuer = "RCON@Grif_Mo";
+            }
+
+            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
+
+            if (punishmentManager.unmutePlayer(target, issuer, reason)) {
+                sendResponse(chatId, "✅ Игрок " + target + " размучен!\n" +
+                        "👤 Выдал: " + issuer + "\n" +
+                        "📝 Причина: " + reason);
+            } else {
+                sendMessage(chatId, "❌ Игрок " + target + " не замучен!");
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon banlist =====
+        // ============================================
+        if (command.equalsIgnoreCase("banlist") || command.startsWith("banlist ")) {
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+            List<String> bans = punishmentManager.getBanList(page, pageSize);
+            int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
+
+            if (bans.isEmpty()) {
+                sendResponse(chatId, "📋 Список банов пуст.");
+            } else {
+                StringBuilder response = new StringBuilder();
+                response.append("📋 Список банов (Страница ").append(page).append("/").append(totalPages).append(")");
+                for (String ban : bans) {
+                    response.append("\n\n").append(ban);
+                }
+                if (totalPages > 1) {
+                    response.append("\n\n📌 Используй: !rcon banlist ").append(page + 1);
+                }
+                sendResponse(chatId, response.toString());
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon mutelist =====
+        // ============================================
+        if (command.equalsIgnoreCase("mutelist") || command.startsWith("mutelist ")) {
+            int page = 1;
+            String[] parts = command.split(" ");
+            if (parts.length > 1) {
+                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
+            }
+            int pageSize = 10;
+            List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
+            int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
+
+            if (mutes.isEmpty()) {
+                sendResponse(chatId, "📋 Список мутов пуст.");
+            } else {
+                StringBuilder response = new StringBuilder();
+                response.append("📋 Список мутов (Страница ").append(page).append("/").append(totalPages).append(")");
+                for (String mute : mutes) {
+                    response.append("\n\n").append(mute);
+                }
+                if (totalPages > 1) {
+                    response.append("\n\n📌 Используй: !rcon mutelist ").append(page + 1);
+                }
+                sendResponse(chatId, response.toString());
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon shist / !rcon hist =====
+        // ============================================
+        if (command.startsWith("shist ") || command.startsWith("hist ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon shist <ник>");
+                return;
+            }
+            String target = parts[1];
+
+            List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(target);
+
+            if (history.isEmpty()) {
+                sendResponse(chatId, "📋 История наказаний для " + target + " пуста.");
+                return;
+            }
+
+            StringBuilder response = new StringBuilder();
+            response.append("📋 История наказаний игрока ").append(target).append(" (Записей: ").append(history.size()).append(")");
+
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+
+            int count = 0;
+            for (PunishmentManager.HistoryEntry entry : history) {
+                if (count >= 20) {
+                    response.append("\n\n... и ещё ").append(history.size() - 20).append(" записей");
+                    break;
+                }
+                String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
+                String status = entry.type.equals("ban") ?
+                    (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
+                    (punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]");
+                String actionName = entry.getActionName();
+
+                response.append("\n\n - ").append(timeAgo).append(" -");
+                response.append("\n   ").append(target).append(" был ").append(actionName)
+                        .append(" на ").append(entry.duration).append(" ")
+                        .append(entry.issuer).append(": ").append(entry.reason).append(" ").append(status);
+                count++;
+            }
+
+            sendResponse(chatId, response.toString());
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon bc / !rcon bcast =====
+        // ============================================
+        if (command.startsWith("bc ") || command.startsWith("bcast ")) {
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon bc <сообщение>");
+                return;
+            }
+            String message = String.join(" ", Arrays.copyOfRange(parts, 1, parts.length));
+
+            String sender = plugin.getCustomSender(userId);
+            if (sender == null && userId == plugin.getOwnerId()) {
+                sender = "RCON@Grif_Mo";
+            }
+
+            String format = "§6[Объявление] §f" + message + " §7(Пишет: " + sender + "§7)";
+            Bukkit.broadcastMessage(format);
+
+            sendResponse(chatId, "📢 " + format.replaceAll("§[0-9a-fk-or]", ""));
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon logs =====
+        // ============================================
+        if (command.startsWith("logs ")) {
+            String[] args = command.split(" ");
+            SendMessage response = logsCommand.handleLogs(chatId, args);
+            try {
+                execute(response);
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
+            return;
+        }
+
+        // ============================================
+        // ==== !rcon tex =====
+        // ============================================
+        if (command.startsWith("tex ")) {
+            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
+                sendMessage(chatId, "⛔ Только владелец может включать техработы.");
+                return;
+            }
+            String[] parts = command.split(" ");
+            if (parts.length < 2) {
+                sendMessage(chatId, "❌ Используй: !rcon tex on/off");
+                return;
+            }
+            boolean state = parts[1].equalsIgnoreCase("on");
+            plugin.getConfig().set("maintenance", state);
+            plugin.saveConfig();
+            sendResponse(chatId, state ? "🔧 Техработы ВКЛЮЧЕНЫ" : "✅ Техработы ВЫКЛЮЧЕНЫ");
             return;
         }
 
@@ -508,1019 +928,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== !rcon logs =====
+        // ==== НЕИЗВЕСТНАЯ КОМАНДА =====
         // ============================================
-        if (command.startsWith("logs ")) {
-            String[] args = command.split(" ");
-            SendMessage response = logsCommand.handleLogs(chatId, args);
-            try {
-                execute(response);
-            } catch (TelegramApiException e) {
-                e.printStackTrace();
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon shist / !rcon hist =====
-        // ============================================
-        if (command.startsWith("shist ") || command.startsWith("hist ")) {
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon shist <ник>");
-                return;
-            }
-            String target = parts[1];
-
-            List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(target);
-
-            if (history.isEmpty()) {
-                sendResponse(chatId, "📋 История наказаний для " + target + " пуста.");
-                return;
-            }
-
-            StringBuilder response = new StringBuilder();
-            response.append("📋 История наказаний игрока ").append(target).append(" (Записей: ").append(history.size()).append(")");
-
-            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
-
-            int count = 0;
-            for (PunishmentManager.HistoryEntry entry : history) {
-                if (count >= 20) {
-                    response.append("\n\n... и ещё ").append(history.size() - 20).append(" записей");
-                    break;
-                }
-                String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
-                String status = entry.type.equals("ban") ?
-                    (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
-                    (punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]");
-                String actionName = entry.getActionName();
-
-                response.append("\n\n - ").append(timeAgo).append(" -");
-                response.append("\n   ").append(target).append(" был ").append(actionName)
-                        .append(" на ").append(entry.duration).append(" ")
-                        .append(entry.issuer).append(": ").append(entry.reason).append(" ").append(status);
-                count++;
-            }
-
-            sendResponse(chatId, response.toString());
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon bc / !rcon bcast =====
-        // ============================================
-        if (command.startsWith("bc ") || command.startsWith("bcast ")) {
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon bc <сообщение>");
-                return;
-            }
-            String message = String.join(" ", Arrays.copyOfRange(parts, 1, parts.length));
-
-            String sender = plugin.getCustomSender(userId);
-            if (sender == null && userId == plugin.getOwnerId()) {
-                sender = "RCON@Grif_Mo";
-            }
-
-            String format = "§6[Объявление] §f" + message + " §7(Пишет: " + sender + "§7)";
-            Bukkit.broadcastMessage(format);
-
-            sendResponse(chatId, "📢 " + format.replaceAll("§[0-9a-fk-or]", ""));
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon ban =====
-        // ============================================
-        if (command.startsWith("ban ")) {
-            if (!checkRankPermission(userId, command, chatId)) return;
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon ban <ник> [время] <причина>");
-                return;
-            }
-            String target = parts[1];
-            String duration = "навсегда";
-            String reason = "";
-            int start = 2;
-            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
-                duration = parts[2];
-                start = 3;
-            }
-            if (parts.length > start) {
-                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
-            } else {
-                reason = "Без причины";
-            }
-
-            String issuer = plugin.getCustomSender(userId);
-            if (issuer == null && userId == plugin.getOwnerId()) {
-                issuer = "RCON@Grif_Mo";
-            }
-
-            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
-
-            if (punishmentManager.banPlayer(target, issuer, reason, duration)) {
-                String response = "✅ Игрок " + target + " забанен на " + duration + "\n" +
-                        "👤 Выдал: " + issuer + "\n" +
-                        "📝 Причина: " + reason;
-                sendResponse(chatId, response);
-            } else {
-                sendMessage(chatId, "❌ Игрок " + target + " уже забанен!");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon mute =====
-        // ============================================
-        if (command.startsWith("mute ")) {
-            if (!checkRankPermission(userId, command, chatId)) return;
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon mute <ник> [время] <причина>");
-                return;
-            }
-            String target = parts[1];
-            String duration = "навсегда";
-            String reason = "";
-            int start = 2;
-            if (parts.length > 2 && punishmentManager.isValidTime(parts[2])) {
-                duration = parts[2];
-                start = 3;
-            }
-            if (parts.length > start) {
-                reason = String.join(" ", Arrays.copyOfRange(parts, start, parts.length));
-            } else {
-                reason = "Без причины";
-            }
-
-            String issuer = plugin.getCustomSender(userId);
-            if (issuer == null && userId == plugin.getOwnerId()) {
-                issuer = "RCON@Grif_Mo";
-            }
-
-            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
-
-            if (punishmentManager.mutePlayer(target, issuer, reason, duration)) {
-                String response = "✅ Игрок " + target + " замучен на " + duration + "\n" +
-                        "👤 Выдал: " + issuer + "\n" +
-                        "📝 Причина: " + reason;
-                sendResponse(chatId, response);
-            } else {
-                sendMessage(chatId, "❌ Игрок " + target + " уже замучен!");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon kick =====
-        // ============================================
-        if (command.startsWith("kick ")) {
-            if (!checkRankPermission(userId, command, chatId)) return;
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon kick <ник> <причина>");
-                return;
-            }
-            String target = parts[1];
-            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-
-            String issuer = plugin.getCustomSender(userId);
-            if (issuer == null && userId == plugin.getOwnerId()) {
-                issuer = "RCON@Grif_Mo";
-            }
-
-            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
-
-            if (punishmentManager.kickPlayer(target, issuer, reason)) {
-                String response = "✅ Игрок " + target + " кикнут!\n" +
-                        "👤 Выдал: " + issuer + "\n" +
-                        "📝 Причина: " + reason;
-                sendResponse(chatId, response);
-            } else {
-                sendMessage(chatId, "❌ Игрок " + target + " не найден!");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon unban =====
-        // ============================================
-        if (command.startsWith("unban ")) {
-            if (!checkRankPermission(userId, command, chatId)) return;
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon unban <ник> <причина>");
-                return;
-            }
-            String target = parts[1];
-            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-
-            String issuer = plugin.getCustomSender(userId);
-            if (issuer == null && userId == plugin.getOwnerId()) {
-                issuer = "RCON@Grif_Mo";
-            }
-
-            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
-
-            if (punishmentManager.unbanPlayer(target, issuer, reason)) {
-                String response = "✅ Игрок " + target + " разбанен!\n" +
-                        "👤 Выдал: " + issuer + "\n" +
-                        "📝 Причина: " + reason;
-                sendResponse(chatId, response);
-            } else {
-                sendMessage(chatId, "❌ Игрок " + target + " не забанен!");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon unmute =====
-        // ============================================
-        if (command.startsWith("unmute ")) {
-            if (!checkRankPermission(userId, command, chatId)) return;
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon unmute <ник> <причина>");
-                return;
-            }
-            String target = parts[1];
-            String reason = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-
-            String issuer = plugin.getCustomSender(userId);
-            if (issuer == null && userId == plugin.getOwnerId()) {
-                issuer = "RCON@Grif_Mo";
-            }
-
-            sendMessage(chatId, "[БОТ] ⏳ Выполняю команду...");
-
-            if (punishmentManager.unmutePlayer(target, issuer, reason)) {
-                String response = "✅ Игрок " + target + " размучен!\n" +
-                        "👤 Выдал: " + issuer + "\n" +
-                        "📝 Причина: " + reason;
-                sendResponse(chatId, response);
-            } else {
-                sendMessage(chatId, "❌ Игрок " + target + " не замучен!");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon banlist =====
-        // ============================================
-        if (command.equalsIgnoreCase("banlist") || command.startsWith("banlist ")) {
-            int page = 1;
-            String[] parts = command.split(" ");
-            if (parts.length > 1) {
-                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
-            }
-            int pageSize = 10;
-            List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
-            List<String> bans = punishmentManager.getBanList(page, pageSize);
-            int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
-
-            if (bans.isEmpty()) {
-                sendResponse(chatId, "📋 Список банов пуст.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("📋 Список банов (Страница ").append(page).append("/").append(totalPages).append(")");
-                for (String ban : bans) {
-                    response.append("\n\n").append(ban);
-                }
-                if (totalPages > 1) {
-                    response.append("\n\n📌 Используй: !rcon banlist ").append(page + 1);
-                }
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon mutelist =====
-        // ============================================
-        if (command.equalsIgnoreCase("mutelist") || command.startsWith("mutelist ")) {
-            int page = 1;
-            String[] parts = command.split(" ");
-            if (parts.length > 1) {
-                try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
-            }
-            int pageSize = 10;
-            List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
-            List<String> mutes = punishmentManager.getMuteList(page, pageSize);
-            int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
-
-            if (mutes.isEmpty()) {
-                sendResponse(chatId, "📋 Список мутов пуст.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("📋 Список мутов (Страница ").append(page).append("/").append(totalPages).append(")");
-                for (String mute : mutes) {
-                    response.append("\n\n").append(mute);
-                }
-                if (totalPages > 1) {
-                    response.append("\n\n📌 Используй: !rcon mutelist ").append(page + 1);
-                }
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== !rcon tex =====
-        // ============================================
-        if (command.startsWith("tex ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может включать техработы.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon tex on/off");
-                return;
-            }
-            boolean state = parts[1].equalsIgnoreCase("on");
-            plugin.getConfig().set("maintenance", state);
-            plugin.saveConfig();
-            sendResponse(chatId, state ? "🔧 Техработы ВКЛЮЧЕНЫ" : "✅ Техработы ВЫКЛЮЧЕНЫ");
-            return;
-        }
-
-        // ============================================
-        // ==== НОВАЯ СИСТЕМА РАНГОВ =====
-        // ============================================
-
-        // --- !rcon rank create ---
-        if (command.startsWith("rank create ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может создавать ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank create <название> [префикс] [эмодзи] [цвет]\n" +
-                        "Пример: !rcon rank create admin [Админ] 🛡️ 🔵");
-                return;
-            }
-            String name = parts[1];
-            String prefix = parts.length > 2 ? parts[2] : "";
-            String emoji = parts.length > 3 ? parts[3] : "";
-            String color = parts.length > 4 ? parts[4] : "";
-            
-            if (rankManager.createRank(name, prefix, emoji, color)) {
-                sendResponse(chatId, "✅ Ранг \"" + name + "\" создан!\n" +
-                        "📌 Префикс: " + prefix + "\n" +
-                        "🎨 Эмодзи: " + emoji + "\n" +
-                        "🎨 Цвет: " + color);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" уже существует.");
-            }
-            return;
-        }
-
-        // --- !rcon rank delete ---
-        if (command.startsWith("rank delete ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может удалять ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank delete <название>");
-                return;
-            }
-            String name = parts[1];
-            if (rankManager.deleteRank(name)) {
-                sendResponse(chatId, "✅ Ранг \"" + name + "\" удалён!");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank rename ---
-        if (command.startsWith("rank rename ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может переименовывать ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank rename <старое> <новое>");
-                return;
-            }
-            String oldName = parts[1];
-            String newName = parts[2];
-            if (rankManager.renameRank(oldName, newName)) {
-                sendResponse(chatId, "✅ Ранг \"" + oldName + "\" переименован в \"" + newName + "\"!");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + oldName + "\" не найден или \"" + newName + "\" уже существует.");
-            }
-            return;
-        }
-
-        // --- !rcon rank clone ---
-        if (command.startsWith("rank clone ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может клонировать ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank clone <исходный> <новый>");
-                return;
-            }
-            String source = parts[1];
-            String target = parts[2];
-            if (rankManager.cloneRank(source, target)) {
-                sendResponse(chatId, "✅ Ранг \"" + source + "\" склонирован в \"" + target + "\"!");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + source + "\" не найден или \"" + target + "\" уже существует.");
-            }
-            return;
-        }
-
-        // --- !rcon rank list ---
-        if (command.startsWith("rank list")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            List<String> rankNames = rankManager.getSortedRankNames();
-            if (rankNames.isEmpty()) {
-                sendResponse(chatId, "📋 Рангов нет.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("📋 СПИСОК РАНГОВ (").append(rankNames.size()).append("):\n\n");
-                int i = 1;
-                for (String name : rankNames) {
-                    RankManager.Rank rank = rankManager.getRank(name);
-                    response.append(i++).append(". ");
-                    if (!rank.getEmoji().isEmpty()) response.append(rank.getEmoji()).append(" ");
-                    if (!rank.getPrefix().isEmpty()) response.append(rank.getPrefix()).append(" ");
-                    if (!rank.getColor().isEmpty()) response.append(rank.getColor());
-                    response.append(" (👤 ").append(rank.getUsers().size()).append(")\n");
-                }
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // --- !rcon rank info ---
-        if (command.startsWith("rank info ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank info <название>");
-                return;
-            }
-            String name = parts[1];
-            RankManager.Rank rank = rankManager.getRank(name);
-            if (rank == null) {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-                return;
-            }
-            
-            StringBuilder response = new StringBuilder();
-            response.append("📋 ИНФОРМАЦИЯ О РАНГЕ \"").append(name).append("\"\n");
-            response.append(SEPARATOR).append("\n");
-            response.append("📌 Префикс: ").append(rank.getPrefix()).append("\n");
-            response.append("🎨 Эмодзи: ").append(rank.getEmoji()).append("\n");
-            response.append("🎨 Цвет: ").append(rank.getColor()).append("\n");
-            response.append("🔰 Приоритет: ").append(rank.getPriority()).append("\n");
-            response.append("👤 Пользователей: ").append(rank.getUsers().size()).append("\n");
-            response.append("📌 Прав: ").append(rank.getPermissions().size()).append("\n");
-            if (!rank.getInherits().isEmpty()) {
-                response.append("🧬 Наследует: ").append(String.join(", ", rank.getInherits())).append("\n");
-            }
-            sendResponse(chatId, response.toString());
-            return;
-        }
-
-        // --- !rcon rank addperm ---
-        if (command.startsWith("rank addperm ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может выдавать права.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank addperm <название> <команда> [лимит]\n" +
-                        "Пример: !rcon rank addperm admin !rcon ban 7d");
-                return;
-            }
-            String name = parts[1];
-            String cmd = parts[2];
-            String limit = parts.length > 3 ? parts[3] : "навсегда";
-            
-            if (rankManager.addPermission(name, cmd, limit)) {
-                sendResponse(chatId, "✅ Рангу \"" + name + "\" выдана команда \"" + cmd + "\" (лимит: " + limit + ")");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank removeperm ---
-        if (command.startsWith("rank removeperm ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может удалять права.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank removeperm <название> <команда>");
-                return;
-            }
-            String name = parts[1];
-            String cmd = parts[2];
-            
-            if (rankManager.removePermission(name, cmd)) {
-                sendResponse(chatId, "✅ У ранга \"" + name + "\" удалена команда \"" + cmd + "\"");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank perms ---
-        if (command.startsWith("rank perms ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank perms <название>");
-                return;
-            }
-            String name = parts[1];
-            RankManager.Rank rank = rankManager.getRank(name);
-            if (rank == null) {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-                return;
-            }
-            
-            Map<String, String> perms = rank.getPermissions();
-            if (perms.isEmpty()) {
-                sendResponse(chatId, "📋 У ранга \"" + name + "\" нет прав.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("📋 ПРАВА РАНГА \"").append(name).append("\"\n");
-                response.append(SEPARATOR).append("\n");
-                int i = 1;
-                for (Map.Entry<String, String> entry : perms.entrySet()) {
-                    response.append(i++).append(". ").append(entry.getKey());
-                    if (!entry.getValue().equals("навсегда")) {
-                        response.append(" (лимит: ").append(entry.getValue()).append(")");
-                    }
-                    response.append("\n");
-                }
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // --- !rcon rank checkperm ---
-        if (command.startsWith("rank checkperm ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank checkperm <название> <команда>");
-                return;
-            }
-            String name = parts[1];
-            String cmd = parts[2];
-            
-            if (rankManager.hasPermissionToCommand(name, cmd)) {
-                String limit = rankManager.getRankCommandLimit(name, cmd);
-                String limitStr = limit != null ? " (лимит: " + limit + ")" : "";
-                sendResponse(chatId, "✅ Ранг \"" + name + "\" имеет право на \"" + cmd + "\"" + limitStr);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" НЕ имеет права на \"" + cmd + "\"");
-            }
-            return;
-        }
-
-        // --- !rcon rank adduser ---
-        if (command.startsWith("rank adduser ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может добавлять в ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank adduser <название> <айди> [причина]");
-                return;
-            }
-            String name = parts[1];
-            long targetId;
-            try {
-                targetId = Long.parseLong(parts[2]);
-            } catch (NumberFormatException e) {
-                sendMessage(chatId, "❌ Неверный ID!");
-                return;
-            }
-            String reason = parts.length > 3 ? String.join(" ", Arrays.copyOfRange(parts, 3, parts.length)) : null;
-            
-            if (rankManager.addUserToRank(name, targetId, reason)) {
-                sendResponse(chatId, "✅ Пользователь " + targetId + " добавлен в ранг \"" + name + "\"");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank removeuser ---
-        if (command.startsWith("rank removeuser ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может удалять из рангов.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank removeuser <айди> [причина]");
-                return;
-            }
-            long targetId;
-            try {
-                targetId = Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                sendMessage(chatId, "❌ Неверный ID!");
-                return;
-            }
-            String reason = parts.length > 2 ? String.join(" ", Arrays.copyOfRange(parts, 2, parts.length)) : null;
-            
-            if (rankManager.removeUserFromRank(targetId, reason)) {
-                sendResponse(chatId, "✅ Пользователь " + targetId + " удалён из ранга");
-            } else {
-                sendMessage(chatId, "❌ Пользователь " + targetId + " не найден в рангах.");
-            }
-            return;
-        }
-
-        // --- !rcon rank users ---
-        if (command.startsWith("rank users ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank users <название>");
-                return;
-            }
-            String name = parts[1];
-            RankManager.Rank rank = rankManager.getRank(name);
-            if (rank == null) {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-                return;
-            }
-            
-            List<Long> users = rank.getUsers();
-            if (users.isEmpty()) {
-                sendResponse(chatId, "👤 В ранге \"" + name + "\" нет пользователей.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("👤 ПОЛЬЗОВАТЕЛИ РАНГА \"").append(name).append("\"\n");
-                response.append(SEPARATOR).append("\n");
-                int i = 1;
-                for (long id : users) {
-                    response.append(i++).append(". ").append(id);
-                    if (id == plugin.getOwnerId()) {
-                        response.append(" 👑 Владелец");
-                    }
-                    response.append("\n");
-                }
-                response.append(SEPARATOR).append("\n");
-                response.append("Всего: ").append(users.size()).append(" пользователей");
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // --- !rcon rank promote ---
-        if (command.startsWith("rank promote ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может повышать.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank promote <айди> [причина]");
-                return;
-            }
-            long targetId;
-            try {
-                targetId = Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                sendMessage(chatId, "❌ Неверный ID!");
-                return;
-            }
-            String reason = parts.length > 2 ? String.join(" ", Arrays.copyOfRange(parts, 2, parts.length)) : null;
-            
-            if (rankManager.promoteUser(targetId, reason)) {
-                sendResponse(chatId, "✅ Пользователь " + targetId + " повышен!");
-            } else {
-                sendMessage(chatId, "❌ Не удалось повысить пользователя.");
-            }
-            return;
-        }
-
-        // --- !rcon rank demote ---
-        if (command.startsWith("rank demote ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может понижать.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank demote <айди> [причина]");
-                return;
-            }
-            long targetId;
-            try {
-                targetId = Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                sendMessage(chatId, "❌ Неверный ID!");
-                return;
-            }
-            String reason = parts.length > 2 ? String.join(" ", Arrays.copyOfRange(parts, 2, parts.length)) : null;
-            
-            if (rankManager.demoteUser(targetId, reason)) {
-                sendResponse(chatId, "✅ Пользователь " + targetId + " понижен!");
-            } else {
-                sendMessage(chatId, "❌ Не удалось понизить пользователя.");
-            }
-            return;
-        }
-
-        // --- !rcon rank setprefix ---
-        if (command.startsWith("rank setprefix ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может менять префикс.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank setprefix <название> <префикс>");
-                return;
-            }
-            String name = parts[1];
-            String prefix = String.join(" ", Arrays.copyOfRange(parts, 2, parts.length));
-            
-            if (rankManager.setRankPrefix(name, prefix)) {
-                sendResponse(chatId, "✅ Рангу \"" + name + "\" установлен префикс: " + prefix);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank setemoji ---
-        if (command.startsWith("rank setemoji ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может менять эмодзи.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank setemoji <название> <эмодзи>");
-                return;
-            }
-            String name = parts[1];
-            String emoji = parts[2];
-            
-            if (rankManager.setRankEmoji(name, emoji)) {
-                sendResponse(chatId, "✅ Рангу \"" + name + "\" установлен эмодзи: " + emoji);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank setcolor ---
-        if (command.startsWith("rank setcolor ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может менять цвет.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank setcolor <название> <цвет>");
-                return;
-            }
-            String name = parts[1];
-            String color = parts[2];
-            
-            if (rankManager.setRankColor(name, color)) {
-                sendResponse(chatId, "✅ Рангу \"" + name + "\" установлен цвет: " + color);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank setpriority ---
-        if (command.startsWith("rank setpriority ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может менять приоритет.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 3) {
-                sendMessage(chatId, "❌ Используй: !rcon rank setpriority <название> <приоритет>");
-                return;
-            }
-            String name = parts[1];
-            int priority;
-            try {
-                priority = Integer.parseInt(parts[2]);
-            } catch (NumberFormatException e) {
-                sendMessage(chatId, "❌ Приоритет должен быть числом!");
-                return;
-            }
-            
-            if (rankManager.setRankPriority(name, priority)) {
-                sendResponse(chatId, "✅ Рангу \"" + name + "\" установлен приоритет: " + priority);
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank myrank ---
-        if (command.equalsIgnoreCase("rank myrank")) {
-            String rankName = rankManager.getUserRank(userId);
-            if (rankName == null) {
-                sendResponse(chatId, "📋 У вас нет ранга.");
-            } else {
-                RankManager.Rank rank = rankManager.getRank(rankName);
-                if (rank == null) {
-                    sendResponse(chatId, "📋 У вас нет ранга.");
-                    return;
-                }
-                String display = rankManager.getFullRankDisplay(userId);
-                sendResponse(chatId, "📋 ВАШ РАНГ\n" +
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                        "🔰 " + display + "\n" +
-                        "📌 Название: " + rankName + "\n" +
-                        "👤 Пользователей в ранге: " + rank.getUsers().size() + "\n" +
-                        "📌 Прав: " + rank.getPermissions().size());
-            }
-            return;
-        }
-
-        // --- !rcon rank hierarchy ---
-        if (command.equalsIgnoreCase("rank hierarchy")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            List<String> rankNames = rankManager.getSortedRankNames();
-            if (rankNames.isEmpty()) {
-                sendResponse(chatId, "📋 Рангов нет.");
-            } else {
-                StringBuilder response = new StringBuilder();
-                response.append("📊 ИЕРАРХИЯ РАНГОВ\n");
-                response.append(SEPARATOR).append("\n");
-                int i = 1;
-                for (String name : rankNames) {
-                    RankManager.Rank rank = rankManager.getRank(name);
-                    String display = rank.getEmoji() + " " + rank.getPrefix();
-                    response.append(i++).append(". ").append(display).append(" (👤 ").append(rank.getUsers().size()).append(")\n");
-                }
-                sendResponse(chatId, response.toString());
-            }
-            return;
-        }
-
-        // --- !rcon rank stats ---
-        if (command.equalsIgnoreCase("rank stats")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Доступ запрещён.");
-                return;
-            }
-            sendResponse(chatId, "📊 СТАТИСТИКА РАНГОВ\n" +
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                    "📌 Всего рангов: " + rankManager.getTotalRanks() + "\n" +
-                    "👤 Всего пользователей: " + rankManager.getTotalUsers() + "\n" +
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                    rankManager.getRankStatsFormatted());
-            return;
-        }
-
-        // --- !rcon rank clear ---
-        if (command.startsWith("rank clear ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может очищать ранги.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank clear <название>");
-                return;
-            }
-            String name = parts[1];
-            if (rankManager.clearRank(name)) {
-                sendResponse(chatId, "✅ Ранг \"" + name + "\" очищен!");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // --- !rcon rank reset ---
-        if (command.startsWith("rank reset ")) {
-            if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                sendMessage(chatId, "⛔ Только владелец может сбрасывать права.");
-                return;
-            }
-            String[] parts = command.split(" ");
-            if (parts.length < 2) {
-                sendMessage(chatId, "❌ Используй: !rcon rank reset <название>");
-                return;
-            }
-            String name = parts[1];
-            if (rankManager.resetRank(name)) {
-                sendResponse(chatId, "✅ Права ранга \"" + name + "\" сброшены!");
-            } else {
-                sendMessage(chatId, "❌ Ранг \"" + name + "\" не найден.");
-            }
-            return;
-        }
-
-        // ============================================
-        // ==== ОПАСНЫЕ КОМАНДЫ (С ПРОВЕРКОЙ ПРАВ) =====
-        // ============================================
-        String[] dangerous = {"ban ", "mute ", "kick ", "unban ", "unmute "};
-        for (String d : dangerous) {
-            if (command.startsWith(d)) {
-                if (!plugin.isAdmin(userId) && userId != plugin.getOwnerId()) {
-                    String rankName = rankManager.getUserRank(userId);
-                    if (rankName == null) {
-                        sendMessage(chatId, "⛔ У вас нет доступа к этой команде!");
-                        return;
-                    }
-                    String fullCmd = "!rcon " + d.trim();
-                    if (!rankManager.hasPermission(userId, fullCmd)) {
-                        sendMessage(chatId, "⛔ У вашего ранга \"" + rankName + "\" нет доступа к команде " + fullCmd);
-                        return;
-                    }
-                    String limit = rankManager.getCommandLimit(userId, fullCmd);
-                    if (limit != null && !limit.equals("навсегда")) {
-                        String[] cmdParts = command.split(" ");
-                        if (cmdParts.length > 2 && cmdParts[2].matches("\\d+[smhdwMy]")) {
-                            String requestedTime = cmdParts[2];
-                            if (!isTimeAllowed(requestedTime, limit)) {
-                                sendMessage(chatId, "⛔ Ваш лимит: не более " + limit + ". Вы запросили " + requestedTime);
-                                return;
-                            }
-                        }
-                    }
-                }
-                sendConfirmationRequest(chatId, command, userId);
-                return;
-            }
-        }
-
-        // --- Обычные команды ---
-        executeNormalCommand(chatId, command, userId);
+        sendMessage(chatId, "❌ Неизвестная команда. Используй !help");
     }
 
     // ============================================
     // ==== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
     // ============================================
-
-    private boolean isTimeAllowed(String requested, String limit) {
-        if (limit.equals("навсегда")) return true;
-        long requestedMs = parseTimeToMillis(requested);
-        long limitMs = parseTimeToMillis(limit);
-        return requestedMs <= limitMs;
-    }
-
-    private long parseTimeToMillis(String time) {
-        if (time == null) return Long.MAX_VALUE;
-        char unit = time.charAt(time.length() - 1);
-        long value = Long.parseLong(time.substring(0, time.length() - 1));
-        switch (unit) {
-            case 's': return value * 1000;
-            case 'm': return value * 60 * 1000;
-            case 'h': return value * 60 * 60 * 1000;
-            case 'd': return value * 24 * 60 * 60 * 1000;
-            case 'w': return value * 7 * 24 * 60 * 60 * 1000;
-            case 'M': return value * 30L * 24 * 60 * 60 * 1000;
-            case 'y': return value * 365L * 24 * 60 * 60 * 1000;
-            default: return Long.MAX_VALUE;
-        }
-    }
 
     private void sendConfirmationRequest(long chatId, String command, long userId) {
         String[] parts = command.split(" ");
@@ -1700,7 +1115,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     }
 
     // ============================================
-    // ==== ОТПРАВКА КРАСИВЫХ ОТВЕТОВ =====
+    // ==== ОТПРАВКА СООБЩЕНИЙ =====
     // ============================================
 
     private void sendResponse(long chatId, String text) {
@@ -1760,11 +1175,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!me — информация о вас\n" +
                 "!help — эта справка\n\n" +
                 "📌 НАКАЗАНИЯ:\n" +
-                "!rcon ban <ник> [время] <причина>\n" +
+                "!rcon ban <ник> [время] <причина> [-s]\n" +
                 "!rcon unban <ник> <причина>\n" +
-                "!rcon mute <ник> [время] <причина>\n" +
+                "!rcon mute <ник> [время] <причина> [-s]\n" +
                 "!rcon unmute <ник> <причина>\n" +
-                "!rcon kick <ник> <причина>\n" +
+                "!rcon kick <ник> <причина> [-s]\n" +
                 "!rcon banlist — список банов\n" +
                 "!rcon mutelist — список мутов\n" +
                 "!rcon shist <ник> — история\n" +
@@ -1774,33 +1189,11 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!rcon botunban <айди> <причина>\n" +
                 "!rcon botbanlist\n" +
                 "!rcon botbaninfo <айди>\n\n" +
-                "📌 СИСТЕМА РАНГОВ (владелец):\n" +
-                "!rcon rank create <название> [префикс] [эмодзи] [цвет]\n" +
-                "!rcon rank delete <название>\n" +
-                "!rcon rank rename <старое> <новое>\n" +
-                "!rcon rank clone <исходный> <новый>\n" +
-                "!rcon rank list — список рангов\n" +
-                "!rcon rank info <название>\n" +
-                "!rcon rank addperm <название> <команда> [лимит]\n" +
-                "!rcon rank removeperm <название> <команда>\n" +
-                "!rcon rank perms <название>\n" +
-                "!rcon rank adduser <название> <айди> [причина]\n" +
-                "!rcon rank removeuser <айди> [причина]\n" +
-                "!rcon rank users <название>\n" +
-                "!rcon rank promote <айди> [причина]\n" +
-                "!rcon rank demote <айди> [причина]\n" +
-                "!rcon rank setprefix <название> <префикс>\n" +
-                "!rcon rank setemoji <название> <эмодзи>\n" +
-                "!rcon rank setcolor <название> <цвет>\n" +
-                "!rcon rank setpriority <название> <приоритет>\n" +
-                "!rcon rank myrank — мой ранг\n" +
-                "!rcon rank hierarchy — иерархия\n" +
-                "!rcon rank stats — статистика\n" +
-                "!rcon rank clear <название>\n" +
-                "!rcon rank reset <название>\n\n" +
                 "📌 АДМИН:\n" +
                 "!rcon messageall <сообщение> — рассылка\n" +
-                "!rcon tex on/off — техработы";
+                "!rcon tex on/off — техработы\n\n" +
+                "🔒 СКРЫТЫЕ НАКАЗАНИЯ (-s):\n" +
+                "Видят только: staff, leader, sponsor, OP";
         sendMessage(chatId, help);
     }
 
@@ -1826,17 +1219,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     }
 
     private void sendMe(long chatId, long userId) {
-        String rankName = rankManager.getUserRank(userId);
-        String rankDisplay = rankManager.getFullRankDisplay(userId);
         String isAdmin = plugin.isAdmin(userId) ? "✅ Да" : "❌ Нет";
         boolean isBanned = botBanManager.isBanned(userId);
+        boolean canSee = canSeeHidden(userId);
 
         String response = "📋 ИНФОРМАЦИЯ О ВАС\n" +
                 SEPARATOR + "\n" +
                 "🆔 ID: " + userId + "\n" +
                 "👑 Админ: " + isAdmin + "\n" +
-                "🔰 Ранг: " + (rankName != null ? rankDisplay : "Без ранга") + "\n" +
-                "⛔ Бан в боте: " + (isBanned ? "❌ ДА" : "✅ НЕТ");
+                "⛔ Бан в боте: " + (isBanned ? "❌ ДА" : "✅ НЕТ") + "\n" +
+                "🔒 Видит скрытые (-s): " + (canSee ? "✅ ДА" : "❌ НЕТ");
 
         if (isBanned) {
             BotBanManager.BanData ban = botBanManager.getBanData(userId);
