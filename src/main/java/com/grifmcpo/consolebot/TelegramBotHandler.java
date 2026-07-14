@@ -26,7 +26,8 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private final PunishmentManager punishmentManager;
     private final BotBanManager botBanManager;
 
-    private final List<Long> hiddenViewers = new ArrayList<>();
+    // Список кто видит скрытые баны в БОТЕ (только admins.yml + владелец)
+    private final List<Long> botHiddenViewers = new ArrayList<>();
 
     private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
 
@@ -42,30 +43,41 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         this.commandExecutor = commandExecutor;
         this.punishmentManager = punishmentManager;
         this.botBanManager = botBanManager;
-        loadHiddenViewers();
+        loadBotHiddenViewers();
     }
 
-    private void loadHiddenViewers() {
-        hiddenViewers.clear();
-        hiddenViewers.add(plugin.getOwnerId());
+    // ===== ЗАГРУЖАЕМ КТО ВИДИТ СКРЫТЫЕ В БОТЕ =====
+    private void loadBotHiddenViewers() {
+        botHiddenViewers.clear();
+        
+        // Владелец всегда видит
+        botHiddenViewers.add(plugin.getOwnerId());
+        
+        // Все из admins.yml видят скрытые баны в боте
         for (String id : plugin.getAdmins().keySet()) {
-            try { hiddenViewers.add(Long.parseLong(id)); } catch (NumberFormatException e) {}
+            try {
+                botHiddenViewers.add(Long.parseLong(id));
+            } catch (NumberFormatException e) {}
         }
-        // ==== ТУТ ДОБАВЛЯЕМ ID staff, leader, sponsor, OP ====
-        // hiddenViewers.add(123456789L);
-        plugin.getLogger().info("✅ Загружено зрителей скрытых наказаний: " + hiddenViewers.size());
+        
+        plugin.getLogger().info("✅ Загружено зрителей скрытых банов в боте: " + botHiddenViewers.size());
     }
 
-    public boolean canSeeHidden(long userId) {
-        return hiddenViewers.contains(userId);
+    // ===== ПРОВЕРКА ВИДИТ ЛИ В БОТЕ =====
+    public boolean canSeeHiddenInBot(long userId) {
+        return botHiddenViewers.contains(userId);
     }
 
-    private void notifyStaffOnly(String message) {
+    // ===== УВЕДОМЛЕНИЕ ТОЛЬКО ADMINS.YML (В БОТЕ) =====
+    private void notifyAdminsInBot(String message) {
         int count = 0;
-        for (long id : hiddenViewers) {
-            try { sendMessage(id, "[СТАФФ] " + message); count++; } catch (Exception e) {}
+        for (long id : botHiddenViewers) {
+            try {
+                sendMessage(id, "[СТАФФ БОТА] " + message);
+                count++;
+            } catch (Exception e) {}
         }
-        plugin.getLogger().info("🔒 Скрытое уведомление отправлено " + count + " пользователям");
+        plugin.getLogger().info("🔒 Уведомление отправлено " + count + " админам в боте");
     }
 
     @Override
@@ -101,59 +113,85 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 String issuerName = plugin.getCustomSender(Long.parseLong(issuer));
                 if (issuerName == null) issuerName = "RCON";
 
-                // ПРОВЕРЯЕМ СКРЫТОСТЬ - БЫЛ ЛИ ФЛАГ -s
                 boolean hidden = data.contains("_hidden_");
 
                 boolean success = false;
                 String result = "";
+                boolean wasExecuted = false;
+
                 switch (action) {
                     case "ban":
-                        success = punishmentManager.banPlayer(playerName, issuerName, reason, duration);
-                        result = success ? "✅ " + playerName + " забанен на " + duration : "❌ " + playerName + " уже забанен!";
-                        if (success && hidden) {
-                            result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
-                            notifyStaffOnly("🔒 СКРЫТЫЙ БАН\n" +
-                                    "👤 Игрок: " + playerName + "\n" +
-                                    "📝 Причина: " + reason + "\n" +
-                                    "⏱ Срок: " + duration + "\n" +
-                                    "👤 Выдал: " + issuerName);
+                        // Используем метод с флагом hidden
+                        success = punishmentManager.banPlayer(playerName, issuerName, reason, duration, hidden);
+                        wasExecuted = true;
+                        if (success) {
+                            result = "✅ " + playerName + " забанен на " + duration;
+                            if (hidden) {
+                                result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только админы в боте!)";
+                                // Отправляем уведомление ТОЛЬКО админам в боте
+                                notifyAdminsInBot("🔒 СКРЫТЫЙ БАН (из бота)\n" +
+                                        "👤 Игрок: " + playerName + "\n" +
+                                        "📝 Причина: " + reason + "\n" +
+                                        "⏱ Срок: " + duration + "\n" +
+                                        "👤 Выдал: " + issuerName);
+                            }
+                        } else {
+                            result = "❌ " + playerName + " уже забанен!";
                         }
                         break;
+
                     case "mute":
-                        success = punishmentManager.mutePlayer(playerName, issuerName, reason, duration);
-                        result = success ? "✅ " + playerName + " замучен на " + duration : "❌ " + playerName + " уже замучен!";
-                        if (success && hidden) {
-                            result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
-                            notifyStaffOnly("🔒 СКРЫТЫЙ МУТ\n" +
-                                    "👤 Игрок: " + playerName + "\n" +
-                                    "📝 Причина: " + reason + "\n" +
-                                    "⏱ Срок: " + duration + "\n" +
-                                    "👤 Выдал: " + issuerName);
+                        success = punishmentManager.mutePlayer(playerName, issuerName, reason, duration, hidden);
+                        wasExecuted = true;
+                        if (success) {
+                            result = "✅ " + playerName + " замучен на " + duration;
+                            if (hidden) {
+                                result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только админы в боте!)";
+                                notifyAdminsInBot("🔒 СКРЫТЫЙ МУТ (из бота)\n" +
+                                        "👤 Игрок: " + playerName + "\n" +
+                                        "📝 Причина: " + reason + "\n" +
+                                        "⏱ Срок: " + duration + "\n" +
+                                        "👤 Выдал: " + issuerName);
+                            }
+                        } else {
+                            result = "❌ " + playerName + " уже замучен!";
                         }
                         break;
+
                     case "kick":
-                        success = punishmentManager.kickPlayer(playerName, issuerName, reason);
-                        result = success ? "✅ " + playerName + " кикнут!" : "❌ " + playerName + " не найден!";
-                        if (success && hidden) {
-                            result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
-                            notifyStaffOnly("🔒 СКРЫТЫЙ КИК\n" +
-                                    "👤 Игрок: " + playerName + "\n" +
-                                    "📝 Причина: " + reason + "\n" +
-                                    "👤 Выдал: " + issuerName);
+                        success = punishmentManager.kickPlayer(playerName, issuerName, reason, hidden);
+                        wasExecuted = true;
+                        if (success) {
+                            result = "✅ " + playerName + " кикнут!";
+                            if (hidden) {
+                                result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только админы в боте!)";
+                                notifyAdminsInBot("🔒 СКРЫТЫЙ КИК (из бота)\n" +
+                                        "👤 Игрок: " + playerName + "\n" +
+                                        "📝 Причина: " + reason + "\n" +
+                                        "👤 Выдал: " + issuerName);
+                            }
+                        } else {
+                            result = "❌ " + playerName + " не найден!";
                         }
                         break;
+
                     case "unban":
                         success = punishmentManager.unbanPlayer(playerName, issuerName, reason);
+                        wasExecuted = true;
                         result = success ? "✅ " + playerName + " разбанен!" : "❌ " + playerName + " не забанен!";
                         break;
+
                     case "unmute":
                         success = punishmentManager.unmutePlayer(playerName, issuerName, reason);
+                        wasExecuted = true;
                         result = success ? "✅ " + playerName + " размучен!" : "❌ " + playerName + " не замучен!";
                         break;
                 }
 
                 deleteMessage(chatId, messageId);
-                sendResponse(Long.parseLong(chatId), result);
+                if (wasExecuted) {
+                    sendResponse(Long.parseLong(chatId), result);
+                }
                 return;
             }
 
@@ -230,17 +268,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             String senderName = plugin.getCustomSender(userId);
             if (senderName == null && userId == plugin.getOwnerId()) senderName = "Владелец";
-            
+
             int count = 0;
-            for (long id : hiddenViewers) {
+            for (long id : botHiddenViewers) {
                 try { sendMessage(id, "📢 " + message); count++; } catch (Exception e) {}
             }
-            sendResponse(chatId, "✅ Сообщение отправлено " + count + " пользователям!");
+            sendResponse(chatId, "✅ Сообщение отправлено " + count + " админам!");
             return;
         }
 
         // ============================================
-        // ==== !rcon ban (С ПОДДЕРЖКОЙ -s) =====
+        // ==== !rcon ban (С -s) =====
         // ============================================
         if (command.startsWith("ban ")) {
             String[] parts = command.split(" ");
@@ -253,8 +291,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String lastArg = parts[parts.length - 1];
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
                 hidden = true;
-                if (!canSeeHidden(userId)) {
-                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!");
+                // Проверяем может ли юзер использовать -s (только админы из admins.yml)
+                if (!canSeeHiddenInBot(userId)) {
+                    sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!\n" +
+                            "🔒 Скрытые в боте видят только админы из admins.yml");
                     return;
                 }
             }
@@ -276,13 +316,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 reason = "Без причины";
             }
 
-            // Отправляем на подтверждение (НЕ выполняем сразу!)
             sendConfirmationRequest(chatId, "ban", target, duration, reason, userId, hidden);
             return;
         }
 
         // ============================================
-        // ==== !rcon mute (С ПОДДЕРЖКОЙ -s) =====
+        // ==== !rcon mute (С -s) =====
         // ============================================
         if (command.startsWith("mute ")) {
             String[] parts = command.split(" ");
@@ -295,7 +334,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String lastArg = parts[parts.length - 1];
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
                 hidden = true;
-                if (!canSeeHidden(userId)) {
+                if (!canSeeHiddenInBot(userId)) {
                     sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!");
                     return;
                 }
@@ -323,7 +362,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         // ============================================
-        // ==== !rcon kick (С ПОДДЕРЖКОЙ -s) =====
+        // ==== !rcon kick (С -s) =====
         // ============================================
         if (command.startsWith("kick ")) {
             String[] parts = command.split(" ");
@@ -336,7 +375,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             String lastArg = parts[parts.length - 1];
             if (lastArg.equals("-s") || lastArg.equals("-S")) {
                 hidden = true;
-                if (!canSeeHidden(userId)) {
+                if (!canSeeHiddenInBot(userId)) {
                     sendMessage(chatId, "⛔ У вас нет прав на скрытые наказания!");
                     return;
                 }
@@ -758,7 +797,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "📝 Причина: " + reason + "\n" +
                 "⏱ Срок: " + duration;
         if (hidden) {
-            message += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff, leader, sponsor, OP)";
+            message += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только админы в боте!)";
         }
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -930,7 +969,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 "!rcon botbanlist, !rcon botbaninfo <айди>\n\n" +
                 "📌 ЛЮБАЯ КОМАНДА НА СЕРВЕР:\n!rcon <команда>\n" +
                 "Пример: !rcon op pley1657\n\n" +
-                "🔒 -s видят только: staff, leader, sponsor, OP";
+                "🔒 -s видят только админы из admins.yml (в боте)";
         sendMessage(chatId, help);
     }
 
@@ -949,7 +988,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private void sendMe(long chatId, long userId) {
         String isAdmin = plugin.isAdmin(userId) ? "✅ Да" : "❌ Нет";
         boolean isBanned = botBanManager.isBanned(userId);
-        boolean canSee = canSeeHidden(userId);
+        boolean canSee = canSeeHiddenInBot(userId);
 
         String response = "📋 ИНФОРМАЦИЯ О ВАС\n" + SEPARATOR + "\n" +
                 "🆔 ID: " + userId + "\n" +
