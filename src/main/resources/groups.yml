@@ -1,0 +1,37 @@
+# Группы и их доступы
+# ALL = все команды доступны
+
+staff:
+  - 8308522569
+  - 987654321
+  permissions:
+    - "!rcon global ban"
+    - "!rcon global mute"
+    - "!rcon global kick"
+    - "!rcon global unban"
+    - "!rcon global unmute"
+    - "!rcon global banlist"
+    - "!rcon global mutelist"
+    - "!rcon global shist"
+    - "!rcon global checkban"
+    - "!rcon global checkmute"
+    - "!rcon global warn"
+    - "!rcon global unwarn"
+    - "!rcon global checkwarn"
+    - "!rcon global whois"
+    - "!rcon global seen"
+
+leader:
+  - 555555555
+  permissions:
+    - ALL
+
+admin:
+  - 8889631346
+  permissions:
+    - ALL
+
+owner:
+  - 8889631346
+  permissions:
+    - ALL
