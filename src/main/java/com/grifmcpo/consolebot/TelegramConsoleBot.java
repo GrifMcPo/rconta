@@ -22,6 +22,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private PunishmentManager punishmentManager;
     private AdminLogger adminLogger;
     private BotBanManager botBanManager;
+    private GroupManager groupManager;
     private TelegramBotHandler botHandler;
 
     @Override
@@ -44,14 +45,14 @@ public class TelegramConsoleBot extends JavaPlugin {
         adminLogger = new AdminLogger(this);
         punishmentManager = new PunishmentManager(this, adminLogger);
         botBanManager = new BotBanManager(this);
+        groupManager = new GroupManager(this);
 
         Bukkit.getPluginManager().registerEvents(new CommandListener(commandLogger, punishmentManager), this);
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            // ИСПРАВЛЕНО: убран RankManager
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
-                    commandExecutor, punishmentManager, botBanManager);
+                    commandExecutor, punishmentManager, botBanManager, groupManager);
             botsApi.registerBot(botHandler);
             getLogger().info("✅ Telegram-бот успешно зарегистрирован!");
         } catch (TelegramApiException e) {
@@ -67,7 +68,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         if (commandExecutor != null) commandExecutor.close();
     }
 
-    // ===== ЗАГРУЗКА АДМИНОВ =====
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
         if (!adminsFile.exists()) saveResource("admins.yml", false);
@@ -103,14 +103,12 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
     }
 
-    // ===== ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ОТ ИМЕНИ БОТА =====
     public void sendMessageAsBot(long chatId, String text) {
         if (botHandler != null) {
             botHandler.sendMessage(chatId, text);
         }
     }
 
-    // ===== ГЕТТЕРЫ =====
     public Map<String, String> getAdmins() { return admins; }
     public long getOwnerId() { return ownerId; }
     public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
@@ -123,5 +121,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public PunishmentManager getPunishmentManager() { return punishmentManager; }
     public AdminLogger getAdminLogger() { return adminLogger; }
     public BotBanManager getBotBanManager() { return botBanManager; }
+    public GroupManager getGroupManager() { return groupManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
 }
