@@ -537,7 +537,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
         }
         int pageSize = 10;
-        List<String> allBans = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+        List<String> allBans = punishmentManager.getBanList();
         List<String> bans = punishmentManager.getBanList(page, pageSize);
         int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
 
@@ -566,7 +566,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             try { page = Integer.parseInt(parts[1]); } catch (NumberFormatException e) {}
         }
         int pageSize = 10;
-        List<String> allMutes = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+        List<String> allMutes = punishmentManager.getMuteList();
         List<String> mutes = punishmentManager.getMuteList(page, pageSize);
         int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
 
@@ -762,15 +762,8 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     }
 
     // ============================================
-    // ==== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
+    // ==== ВСПОМОГАТЕЛЬНЫЙ МЕТОД =====
     // ============================================
-
-    private boolean isTimeAllowed(String requested, String limit) {
-        if (limit.equals("навсегда")) return true;
-        long requestedMs = parseTimeToMillis(requested);
-        long limitMs = parseTimeToMillis(limit);
-        return requestedMs <= limitMs;
-    }
 
     private long parseTimeToMillis(String time) {
         if (time == null) return Long.MAX_VALUE;
@@ -797,10 +790,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         switch (type) {
             case "banlist":
-                items = punishmentManager.getBanList(1, Integer.MAX_VALUE);
+                items = punishmentManager.getBanList();
                 break;
             case "mutelist":
-                items = punishmentManager.getMuteList(1, Integer.MAX_VALUE);
+                items = punishmentManager.getMuteList();
                 break;
             case "shist":
                 List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(playerName);
