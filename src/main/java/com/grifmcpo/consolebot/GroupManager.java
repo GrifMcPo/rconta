@@ -40,15 +40,28 @@ public class GroupManager {
         groupPermissions.clear();
 
         for (String groupName : groupsConfig.getKeys(false)) {
-            List<Long> users = groupsConfig.getLongList(groupName);
-            groups.put(groupName, users);
-            for (long id : users) {
-                userGroup.put(id, groupName);
+            // Загружаем пользователей
+            List<Long> users = groupsConfig.getLongList(groupName + ".users");
+            if (users.isEmpty()) {
+                // Если используется старый формат без .users
+                users = groupsConfig.getLongList(groupName);
+            }
+            
+            if (!users.isEmpty()) {
+                groups.put(groupName, users);
+                for (long id : users) {
+                    userGroup.put(id, groupName);
+                }
             }
 
+            // Загружаем права
             List<String> perms = groupsConfig.getStringList(groupName + ".permissions");
             if (perms != null && !perms.isEmpty()) {
                 groupPermissions.put(groupName, perms);
+                plugin.getLogger().info("✅ Загружены права для группы " + groupName + ": " + perms.size() + " прав");
+            } else {
+                // Если прав нет, но группа есть — даём пустой список
+                groupPermissions.put(groupName, new ArrayList<>());
             }
         }
 
@@ -57,10 +70,12 @@ public class GroupManager {
 
     public void saveGroups() {
         for (Map.Entry<String, List<Long>> entry : groups.entrySet()) {
-            groupsConfig.set(entry.getKey(), entry.getValue());
+            groupsConfig.set(entry.getKey() + ".users", entry.getValue());
         }
         for (Map.Entry<String, List<String>> entry : groupPermissions.entrySet()) {
-            groupsConfig.set(entry.getKey() + ".permissions", entry.getValue());
+            if (!entry.getValue().isEmpty()) {
+                groupsConfig.set(entry.getKey() + ".permissions", entry.getValue());
+            }
         }
         try {
             groupsConfig.save(groupsFile);
@@ -75,18 +90,30 @@ public class GroupManager {
 
     public boolean hasPermission(long telegramId, String command) {
         String group = userGroup.get(telegramId);
-        if (group == null) return false;
+        if (group == null) {
+            plugin.getLogger().info("❌ Пользователь " + telegramId + " не найден в группах");
+            return false;
+        }
 
         List<String> perms = groupPermissions.get(group);
-        if (perms == null) return false;
+        if (perms == null) {
+            plugin.getLogger().info("❌ Группа " + group + " не имеет прав");
+            return false;
+        }
 
-        if (perms.contains("ALL")) return true;
+        // ALL = все команды доступны
+        if (perms.contains("ALL")) {
+            return true;
+        }
 
+        // Проверяем конкретную команду
         for (String perm : perms) {
-            if (command.startsWith(perm) || command.equals(perm)) {
+            if (perm.equals(command) || command.startsWith(perm)) {
                 return true;
             }
         }
+        
+        plugin.getLogger().info("❌ У пользователя " + telegramId + " нет права на команду " + command);
         return false;
     }
 
@@ -111,7 +138,9 @@ public class GroupManager {
         List<String> commands = new ArrayList<>();
         for (String perm : perms) {
             String cmd = perm.replace("!rcon global ", "");
-            commands.add(cmd);
+            if (!cmd.isEmpty()) {
+                commands.add(cmd);
+            }
         }
         return commands;
     }
