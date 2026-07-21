@@ -1,5 +1,5 @@
 package com.grifmcpo.consolebot;
- 
+
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -78,15 +78,17 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         // ===== КНОПКИ =====
         if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
-            String chatId = update.getCallbackQuery().getMessage().getChatId().toString();
+            String chatIdStr = update.getCallbackQuery().getMessage().getChatId().toString();
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
+            long chatId = Long.parseLong(chatIdStr);
 
             if (data.startsWith("reply_")) {
                 String[] parts = data.split("_");
                 String playerName = parts[1];
                 long playerId = Long.parseLong(parts[2]);
-                sendMessage(Long.parseLong(chatId), "✉️ Введите сообщение для ответа игроку " + playerName + ":");
-                deleteMessage(chatId, messageId);
+                plugin.getLogger().info("📩 Ответ на репорт от " + playerName + " (ID: " + playerId + ")");
+                sendMessage(chatId, "✉️ Введите сообщение для ответа игроку " + playerName + ":");
+                deleteMessage(chatIdStr, messageId);
                 return;
             }
 
@@ -167,14 +169,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                         break;
                 }
 
-                deleteMessage(chatId, messageId);
+                deleteMessage(chatIdStr, messageId);
                 sendMessage(chatId, result);
                 return;
             }
 
             if (data.startsWith("cancel_")) {
-                deleteMessage(chatId, messageId);
-                sendMessage(Long.parseLong(chatId), "❌ Операция отменена.");
+                deleteMessage(chatIdStr, messageId);
+                sendMessage(chatId, "❌ Операция отменена.");
                 return;
             }
 
@@ -183,8 +185,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 String type = parts[1];
                 String playerName = parts[2];
                 int page = Integer.parseInt(parts[3]);
-                long chatIdLong = Long.parseLong(chatId);
-                handlePagination(chatIdLong, type, playerName, page, messageId);
+                handlePagination(chatId, type, playerName, page, messageId);
                 return;
             }
             return;
