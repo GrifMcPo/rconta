@@ -225,7 +225,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         if (!messageText.startsWith("!rcon")) return;
 
-        String command = messageText.substring(6).trim();
+        String command;
+        if (messageText.length() > 6) {
+            command = messageText.substring(6).trim();
+        } else {
+            sendHelp(chatId, userId);
+            return;
+        }
+
         if (command.isEmpty()) {
             sendHelp(chatId, userId);
             return;
