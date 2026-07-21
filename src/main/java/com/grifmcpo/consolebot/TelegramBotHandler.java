@@ -261,8 +261,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            if (!groupManager.hasPermission(userId, "!rcon global " + cmd.split(" ")[0])) {
+            String cmdName = cmd.split(" ")[0];
+
+            // Проверяем доступ к команде
+            if (!groupManager.hasPermission(userId, "!rcon global " + cmdName)) {
                 sendMessage(chatId, "[БОТ] У вас нет доступа к данной команде!");
+                plugin.getLogger().info("❌ Доступ запрещён: " + userId + " -> " + cmdName);
                 return;
             }
 
