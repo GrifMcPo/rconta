@@ -1,4 +1,4 @@
-package com.grifmcpo.consolebot; 
+package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -135,38 +135,44 @@ public class PunishmentManager {
             return false;
         }
 
-        HistoryEntry entry = new HistoryEntry();
-        entry.type = "ban";
-        entry.player = playerName;
-        entry.issuer = issuer;
-        entry.reason = reason;
-        entry.duration = duration;
-        entry.timestamp = System.currentTimeMillis();
-        entry.hidden = hidden;
-        addHistory(playerName, entry);
-
-        long expiry = duration.equals("навсегда") ? -1 : System.currentTimeMillis() + parseTimeToMillis(duration);
-        bans.put(playerName, expiry);
-        saveHistory();
-
-        String command;
-        if (duration.equals("навсегда")) {
-            command = "ban " + playerName + " " + reason;
-        } else {
-            command = "tempban " + playerName + " " + duration + " " + reason;
-        }
+        final String finalPlayerName = playerName;
+        final String finalIssuer = issuer;
+        final String finalReason = reason;
+        final String finalDuration = duration;
+        final boolean finalHidden = hidden;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
+            HistoryEntry entry = new HistoryEntry();
+            entry.type = "ban";
+            entry.player = finalPlayerName;
+            entry.issuer = finalIssuer;
+            entry.reason = finalReason;
+            entry.duration = finalDuration;
+            entry.timestamp = System.currentTimeMillis();
+            entry.hidden = finalHidden;
+            addHistorySync(finalPlayerName, entry);
+
+            long expiry = finalDuration.equals("навсегда") ? -1 : System.currentTimeMillis() + parseTimeToMillis(finalDuration);
+            bans.put(finalPlayerName, expiry);
+            saveHistory();
+
+            String command;
+            if (finalDuration.equals("навсегда")) {
+                command = "ban " + finalPlayerName + " " + finalReason;
+            } else {
+                command = "tempban " + finalPlayerName + " " + finalDuration + " " + finalReason;
+            }
+
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+
+            if (!finalHidden) {
+                Bukkit.broadcastMessage("§c" + finalPlayerName + " был забанен на " + finalDuration + "! Причина: " + finalReason);
+            }
+
+            if (adminLogger != null) {
+                adminLogger.log("BAN", finalPlayerName, finalIssuer, finalReason, finalDuration, finalHidden ? "СКРЫТО" : "ПУБЛИЧНО");
+            }
         });
-
-        if (!hidden) {
-            Bukkit.broadcastMessage("§c" + playerName + " был забанен на " + duration + "! Причина: " + reason);
-        }
-
-        if (adminLogger != null) {
-            adminLogger.log("BAN", playerName, issuer, reason, duration, hidden ? "СКРЫТО" : "ПУБЛИЧНО");
-        }
 
         return true;
     }
@@ -179,18 +185,22 @@ public class PunishmentManager {
             return false;
         }
 
-        bans.remove(playerName);
-        saveHistory();
+        final String finalPlayerName = playerName;
+        final String finalIssuer = issuer;
+        final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "pardon " + playerName);
+            bans.remove(finalPlayerName);
+            saveHistory();
+
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "pardon " + finalPlayerName);
+
+            Bukkit.broadcastMessage("§a" + finalPlayerName + " был разбанен! Причина: " + finalReason);
+
+            if (adminLogger != null) {
+                adminLogger.log("UNBAN", finalPlayerName, finalIssuer, finalReason, "навсегда", "ПУБЛИЧНО");
+            }
         });
-
-        Bukkit.broadcastMessage("§a" + playerName + " был разбанен! Причина: " + reason);
-
-        if (adminLogger != null) {
-            adminLogger.log("UNBAN", playerName, issuer, reason, "навсегда", "ПУБЛИЧНО");
-        }
 
         return true;
     }
@@ -207,40 +217,46 @@ public class PunishmentManager {
             return false;
         }
 
-        HistoryEntry entry = new HistoryEntry();
-        entry.type = "mute";
-        entry.player = playerName;
-        entry.issuer = issuer;
-        entry.reason = reason;
-        entry.duration = duration;
-        entry.timestamp = System.currentTimeMillis();
-        entry.hidden = hidden;
-        addHistory(playerName, entry);
-
-        long expiry = duration.equals("навсегда") ? -1 : System.currentTimeMillis() + parseTimeToMillis(duration);
-        mutes.put(playerName, expiry);
-        muteIssuers.put(playerName, issuer);
-        muteReasons.put(playerName, reason);
-        saveHistory();
-
-        String command;
-        if (duration.equals("навсегда")) {
-            command = "mute " + playerName + " " + reason;
-        } else {
-            command = "tempmute " + playerName + " " + duration + " " + reason;
-        }
+        final String finalPlayerName = playerName;
+        final String finalIssuer = issuer;
+        final String finalReason = reason;
+        final String finalDuration = duration;
+        final boolean finalHidden = hidden;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
+            HistoryEntry entry = new HistoryEntry();
+            entry.type = "mute";
+            entry.player = finalPlayerName;
+            entry.issuer = finalIssuer;
+            entry.reason = finalReason;
+            entry.duration = finalDuration;
+            entry.timestamp = System.currentTimeMillis();
+            entry.hidden = finalHidden;
+            addHistorySync(finalPlayerName, entry);
+
+            long expiry = finalDuration.equals("навсегда") ? -1 : System.currentTimeMillis() + parseTimeToMillis(finalDuration);
+            mutes.put(finalPlayerName, expiry);
+            muteIssuers.put(finalPlayerName, finalIssuer);
+            muteReasons.put(finalPlayerName, finalReason);
+            saveHistory();
+
+            String command;
+            if (finalDuration.equals("навсегда")) {
+                command = "mute " + finalPlayerName + " " + finalReason;
+            } else {
+                command = "tempmute " + finalPlayerName + " " + finalDuration + " " + finalReason;
+            }
+
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+
+            if (!finalHidden) {
+                Bukkit.broadcastMessage("§e" + finalPlayerName + " был замучен на " + finalDuration + "! Причина: " + finalReason);
+            }
+
+            if (adminLogger != null) {
+                adminLogger.log("MUTE", finalPlayerName, finalIssuer, finalReason, finalDuration, finalHidden ? "СКРЫТО" : "ПУБЛИЧНО");
+            }
         });
-
-        if (!hidden) {
-            Bukkit.broadcastMessage("§e" + playerName + " был замучен на " + duration + "! Причина: " + reason);
-        }
-
-        if (adminLogger != null) {
-            adminLogger.log("MUTE", playerName, issuer, reason, duration, hidden ? "СКРЫТО" : "ПУБЛИЧНО");
-        }
 
         return true;
     }
@@ -253,20 +269,24 @@ public class PunishmentManager {
             return false;
         }
 
-        mutes.remove(playerName);
-        muteIssuers.remove(playerName);
-        muteReasons.remove(playerName);
-        saveHistory();
+        final String finalPlayerName = playerName;
+        final String finalIssuer = issuer;
+        final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "unmute " + playerName);
+            mutes.remove(finalPlayerName);
+            muteIssuers.remove(finalPlayerName);
+            muteReasons.remove(finalPlayerName);
+            saveHistory();
+
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "unmute " + finalPlayerName);
+
+            Bukkit.broadcastMessage("§a" + finalPlayerName + " был размучен! Причина: " + finalReason);
+
+            if (adminLogger != null) {
+                adminLogger.log("UNMUTE", finalPlayerName, finalIssuer, finalReason, "навсегда", "ПУБЛИЧНО");
+            }
         });
-
-        Bukkit.broadcastMessage("§a" + playerName + " был размучен! Причина: " + reason);
-
-        if (adminLogger != null) {
-            adminLogger.log("UNMUTE", playerName, issuer, reason, "навсегда", "ПУБЛИЧНО");
-        }
 
         return true;
     }
@@ -279,31 +299,39 @@ public class PunishmentManager {
     }
 
     public boolean kickPlayer(String playerName, String issuer, String reason, boolean hidden) {
-        Player player = Bukkit.getPlayer(playerName);
-        if (player == null) {
-            return false;
-        }
+        final String finalPlayerName = playerName;
+        final String finalIssuer = issuer;
+        final String finalReason = reason;
+        final boolean finalHidden = hidden;
 
-        HistoryEntry entry = new HistoryEntry();
-        entry.type = "kick";
-        entry.player = playerName;
-        entry.issuer = issuer;
-        entry.reason = reason;
-        entry.duration = "навсегда";
-        entry.timestamp = System.currentTimeMillis();
-        entry.hidden = hidden;
-        addHistory(playerName, entry);
-        saveHistory();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            Player player = Bukkit.getPlayer(finalPlayerName);
+            if (player == null) {
+                plugin.getLogger().warning("❌ Игрок " + finalPlayerName + " не найден для кика!");
+                return;
+            }
 
-        player.kickPlayer("§cВы были кикнуты!\n§7Причина: " + reason);
+            HistoryEntry entry = new HistoryEntry();
+            entry.type = "kick";
+            entry.player = finalPlayerName;
+            entry.issuer = finalIssuer;
+            entry.reason = finalReason;
+            entry.duration = "навсегда";
+            entry.timestamp = System.currentTimeMillis();
+            entry.hidden = finalHidden;
+            addHistorySync(finalPlayerName, entry);
+            saveHistory();
 
-        if (!hidden) {
-            Bukkit.broadcastMessage("§e" + playerName + " был кикнут! Причина: " + reason);
-        }
+            player.kickPlayer("§cВы были кикнуты!\n§7Причина: " + finalReason);
 
-        if (adminLogger != null) {
-            adminLogger.log("KICK", playerName, issuer, reason, "навсегда", hidden ? "СКРЫТО" : "ПУБЛИЧНО");
-        }
+            if (!finalHidden) {
+                Bukkit.broadcastMessage("§e" + finalPlayerName + " был кикнут! Причина: " + finalReason);
+            }
+
+            if (adminLogger != null) {
+                adminLogger.log("KICK", finalPlayerName, finalIssuer, finalReason, "навсегда", finalHidden ? "СКРЫТО" : "ПУБЛИЧНО");
+            }
+        });
 
         return true;
     }
@@ -448,7 +476,7 @@ public class PunishmentManager {
         return history.getOrDefault(playerName, new ArrayList<>());
     }
 
-    private void addHistory(String playerName, HistoryEntry entry) {
+    private void addHistorySync(String playerName, HistoryEntry entry) {
         List<HistoryEntry> list = history.computeIfAbsent(playerName, k -> new ArrayList<>());
         list.add(entry);
         saveHistory();
