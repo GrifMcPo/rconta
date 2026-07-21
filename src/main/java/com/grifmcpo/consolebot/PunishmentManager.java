@@ -111,13 +111,12 @@ public class PunishmentManager {
             public void run() {
                 checkExpiredPunishments();
             }
-        }.runTaskTimer(plugin, 20L, 20L); // Каждую секунду
+        }.runTaskTimer(plugin, 20L, 20L);
     }
 
     private void checkExpiredPunishments() {
         long now = System.currentTimeMillis();
 
-        // Проверяем баны
         for (Map.Entry<String, Long> entry : new HashMap<>(bans).entrySet()) {
             String playerName = entry.getKey();
             long expiry = entry.getValue();
@@ -126,12 +125,10 @@ public class PunishmentManager {
                 banIssuers.remove(playerName);
                 banReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие бана: " + playerName);
-                // Уведомление в игру
                 Bukkit.broadcastMessage("§aИгрок " + playerName + " был автоматически разбанен (срок истек)");
             }
         }
 
-        // Проверяем муты
         for (Map.Entry<String, Long> entry : new HashMap<>(mutes).entrySet()) {
             String playerName = entry.getKey();
             long expiry = entry.getValue();
@@ -140,7 +137,6 @@ public class PunishmentManager {
                 muteIssuers.remove(playerName);
                 muteReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие мута: " + playerName);
-                // Уведомление игроку
                 Player p = Bukkit.getPlayer(playerName);
                 if (p != null && p.isOnline()) {
                     p.sendMessage("§aВаш мут был автоматически снят (срок истек)");
@@ -207,7 +203,6 @@ public class PunishmentManager {
             banReasons.put(finalPlayerName, finalReason);
             saveHistory();
 
-            // Выполняем бан на сервере
             String command;
             if (finalDuration.equals("навсегда")) {
                 command = "ban " + finalPlayerName + " " + finalReason;
@@ -216,7 +211,20 @@ public class PunishmentManager {
             }
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
-            // Красивое сообщение в чат
+            // ============================================
+            // ==== КИКАЕМ ИГРОКА СРАЗУ =====
+            // ============================================
+            Player player = Bukkit.getPlayer(finalPlayerName);
+            if (player != null && player.isOnline()) {
+                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
+                String kickMessage = "§c§lВаш аккаунт заблокирован!\n" +
+                        "§fПричина: §c" + finalReason + "\n" +
+                        "§fСервер: §cглобальный\n" +
+                        "§fВыдал: §9" + finalIssuer + "\n" +
+                        "§fИстекает через: §c" + expiryStr;
+                player.kickPlayer(kickMessage);
+            }
+
             if (!finalHidden) {
                 String msg = "§fИгрок §9" + finalIssuer + " §fзабанил §c" + finalPlayerName +
                         " §fна §b" + formatDuration(finalDuration) + " §fпо причине: §7" + finalReason;
@@ -251,7 +259,6 @@ public class PunishmentManager {
 
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "pardon " + finalPlayerName);
 
-            // Красивое сообщение в чат
             String msg = "§fИгрок §9" + finalIssuer + " §aразбанил §c" + finalPlayerName +
                     " §fпо причине: §7" + finalReason;
             Bukkit.broadcastMessage(msg);
@@ -501,51 +508,7 @@ public class PunishmentManager {
         return banReasons.get(playerName);
     }
 
-    // ============================================
-    // ==== СПИСКИ =====
-    // ============================================
-    public List<String> getBanList(int page, int pageSize) {
-        List<String> result = new ArrayList<>();
-        int start = (page - 1) * pageSize;
-        int index = 0;
-
-        for (Map.Entry<String, Long> entry : bans.entrySet()) {
-            if (index >= start && result.size() < pageSize) {
-                String playerName = entry.getKey();
-                long expiry = entry.getValue();
-                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
-                result.add("§c" + playerName + " §7— §f" + expiryStr);
-            }
-            index++;
-        }
-        return result;
-    }
-
-    public List<String> getMuteList(int page, int pageSize) {
-        List<String> result = new ArrayList<>();
-        int start = (page - 1) * pageSize;
-        int index = 0;
-
-        for (Map.Entry<String, Long> entry : mutes.entrySet()) {
-            if (index >= start && result.size() < pageSize) {
-                String playerName = entry.getKey();
-                long expiry = entry.getValue();
-                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
-                result.add("§e" + playerName + " §7— §f" + expiryStr);
-            }
-            index++;
-        }
-        return result;
-    }
-
-    // ============================================
-    // ==== ИСТОРИЯ =====
-    // ============================================
-    public List<HistoryEntry> getHistory(String playerName) {
-        return history.getOrDefault(playerName, new ArrayList<>());
-    }
-
-    public String getFullBanInfo(String playerName) {
+    public String getFullBanMessage(String playerName) {
         if (!isBanned(playerName)) return null;
         Long expiry = bans.get(playerName);
         String issuer = banIssuers.get(playerName);
@@ -628,8 +591,8 @@ public class PunishmentManager {
         StringBuilder sb = new StringBuilder();
         if (days > 0) sb.append(days).append(" дн ");
         if (hours > 0) sb.append(hours).append(" ч ");
-        if (minutes > 0) sb.append(minutes).append(" мин ");
-        if (seconds > 0 && days == 0 && hours == 0) sb.append(seconds).append(" сек");
+        if (minutes > 0 && (days == 0 || hours == 0)) sb.append(minutes).append(" мин ");
+        if (seconds > 0 && days == 0 && hours == 0 && minutes == 0) sb.append(seconds).append(" сек");
         if (sb.length() == 0) return "менее минуты";
         return sb.toString().trim();
     }
@@ -653,7 +616,7 @@ public class PunishmentManager {
 
     public boolean checkOnJoin(Player player) {
         if (isBanned(player.getName())) {
-            player.kickPlayer(getFullBanInfo(player.getName()));
+            player.kickPlayer(getFullBanMessage(player.getName()));
             return false;
         }
         return true;
