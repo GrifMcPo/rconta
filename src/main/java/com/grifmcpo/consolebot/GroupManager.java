@@ -46,7 +46,6 @@ public class GroupManager {
                 userGroup.put(id, groupName);
             }
 
-            // Загружаем права группы
             List<String> perms = groupsConfig.getStringList(groupName + ".permissions");
             if (perms != null && !perms.isEmpty()) {
                 groupPermissions.put(groupName, perms);
