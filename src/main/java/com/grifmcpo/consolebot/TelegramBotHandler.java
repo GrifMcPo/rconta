@@ -270,7 +270,9 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // Специальные команды
+            // ============================================
+            // ==== КАСТОМНЫЕ КОМАНДЫ (ОБРАБОТКА В БОТЕ) =====
+            // ============================================
             if (cmd.startsWith("checkban ")) {
                 handleCheckBan(chatId, cmd);
                 return;
@@ -307,6 +309,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 handleTex(chatId, cmd, userId);
                 return;
             }
+
+            // ============================================
+            // ==== НАКАЗАНИЯ (ban, mute, kick, unban, unmute) =====
+            // ============================================
             if (cmd.startsWith("ban ") || cmd.startsWith("mute ") || cmd.startsWith("kick ") ||
                 cmd.startsWith("unban ") || cmd.startsWith("unmute ")) {
                 handlePunishment(chatId, cmd, userId);
@@ -319,6 +325,101 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
 
         sendHelp(chatId, userId);
+    }
+
+    // ============================================
+    // ==== ОБРАБОТКА НАКАЗАНИЙ =====
+    // ============================================
+    private void handlePunishment(long chatId, String cmd, long userId) {
+        String[] parts = cmd.split(" ");
+        String action = parts[0];
+        String playerName = parts[1];
+
+        boolean hidden = false;
+        String lastArg = parts[parts.length - 1];
+        if (lastArg.equals("-s") || lastArg.equals("-S")) {
+            hidden = true;
+            if (!canSeeHidden(userId)) {
+                sendMessage(chatId, "[БОТ] У вас нет прав на скрытые наказания!");
+                return;
+            }
+            cmd = String.join(" ", Arrays.copyOf(parts, parts.length - 1));
+            parts = cmd.split(" ");
+        }
+
+        String duration = "навсегда";
+        String reason = "";
+        int start = 2;
+        int end = parts.length;
+
+        if (end > start + 1 && punishmentManager.isValidTime(parts[2])) {
+            duration = parts[2];
+            start = 3;
+        }
+
+        if (end > start) {
+            reason = String.join(" ", Arrays.copyOfRange(parts, start, end));
+        } else {
+            reason = "Без причины";
+        }
+
+        String issuer = plugin.getCustomSender(userId);
+        if (issuer == null) issuer = "RCON";
+
+        boolean success = false;
+        String result = "";
+
+        switch (action) {
+            case "ban":
+                success = punishmentManager.banPlayer(playerName, issuer, reason, duration, hidden);
+                result = success ? "✅ Игрок " + playerName + " забанен на " + duration : "❌ " + playerName + " уже забанен!";
+                if (success && hidden) {
+                    result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ БАН\n" +
+                            "👤 Игрок: " + playerName + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "⏱ Срок: " + duration + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                break;
+
+            case "mute":
+                success = punishmentManager.mutePlayer(playerName, issuer, reason, duration, hidden);
+                result = success ? "✅ Игрок " + playerName + " замучен на " + duration : "❌ " + playerName + " уже замучен!";
+                if (success && hidden) {
+                    result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ МУТ\n" +
+                            "👤 Игрок: " + playerName + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "⏱ Срок: " + duration + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                break;
+
+            case "kick":
+                success = punishmentManager.kickPlayer(playerName, issuer, reason, hidden);
+                result = success ? "✅ Игрок " + playerName + " кикнут!" : "❌ " + playerName + " не найден!";
+                if (success && hidden) {
+                    result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
+                    notifyStaffOnly("🔒 СКРЫТЫЙ КИК\n" +
+                            "👤 Игрок: " + playerName + "\n" +
+                            "📝 Причина: " + reason + "\n" +
+                            "👤 Выдал: " + issuer);
+                }
+                break;
+
+            case "unban":
+                success = punishmentManager.unbanPlayer(playerName, issuer, reason);
+                result = success ? "✅ Игрок " + playerName + " разбанен!" : "❌ " + playerName + " не забанен!";
+                break;
+
+            case "unmute":
+                success = punishmentManager.unmutePlayer(playerName, issuer, reason);
+                result = success ? "✅ Игрок " + playerName + " размучен!" : "❌ " + playerName + " не замучен!";
+                break;
+        }
+
+        sendMessage(chatId, "[БОТ] " + result);
     }
 
     // ===== ОТДЕЛЬНЫЕ КОМАНДЫ =====
@@ -529,41 +630,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         plugin.getConfig().set("maintenance", state);
         plugin.saveConfig();
         sendMessage(chatId, "[БОТ] Техработы " + (state ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"));
-    }
-
-    private void handlePunishment(long chatId, String cmd, long userId) {
-        String[] parts = cmd.split(" ");
-        boolean hidden = false;
-        String lastArg = parts[parts.length - 1];
-        if (lastArg.equals("-s") || lastArg.equals("-S")) {
-            hidden = true;
-            if (!canSeeHidden(userId)) {
-                sendMessage(chatId, "[БОТ] У вас нет прав на скрытые наказания!");
-                return;
-            }
-            cmd = String.join(" ", Arrays.copyOf(parts, parts.length - 1));
-            parts = cmd.split(" ");
-        }
-
-        String action = parts[0];
-        String playerName = parts[1];
-        String duration = "навсегда";
-        String reason = "";
-        int start = 2;
-        int end = parts.length;
-
-        if (end > start + 1 && punishmentManager.isValidTime(parts[2])) {
-            duration = parts[2];
-            start = 3;
-        }
-
-        if (end > start) {
-            reason = String.join(" ", Arrays.copyOfRange(parts, start, end));
-        } else {
-            reason = "Без причины";
-        }
-
-        sendConfirmationRequest(chatId, action, playerName, duration, reason, userId, hidden);
     }
 
     // ============================================
