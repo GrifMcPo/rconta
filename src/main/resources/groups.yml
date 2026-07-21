@@ -1,9 +1,10 @@
-# Группы и их доступы 
+# Группы и их доступы
 # ALL = все команды доступны
 
 staff:
-  - 8308522569
-  - 987654321
+  users:
+    - 8308522569
+    - 987654321
   permissions:
     - "!rcon global ban"
     - "!rcon global mute"
@@ -22,16 +23,19 @@ staff:
     - "!rcon global seen"
 
 leader:
-  - 555555555
+  users:
+    - 555555555
   permissions:
     - ALL
 
 admin:
-  - 8889631346
+  users:
+    - 8889631346
   permissions:
     - ALL
 
 owner:
-  - 8889631346
+  users:
+    - 8889631346
   permissions:
     - ALL
