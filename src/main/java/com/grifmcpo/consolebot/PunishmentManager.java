@@ -20,6 +20,8 @@ public class PunishmentManager {
     private final Map<String, List<HistoryEntry>> history = new ConcurrentHashMap<>();
     private final Map<String, Long> bans = new ConcurrentHashMap<>();
     private final Map<String, Long> mutes = new ConcurrentHashMap<>();
+    private final Map<String, String> muteIssuers = new ConcurrentHashMap<>();
+    private final Map<String, String> muteReasons = new ConcurrentHashMap<>();
 
     public PunishmentManager(JavaPlugin plugin, AdminLogger adminLogger) {
         this.plugin = plugin;
@@ -42,7 +44,8 @@ public class PunishmentManager {
 
         history.clear();
         for (String playerName : historyConfig.getKeys(false)) {
-            List<Map<?, ?>> entries = historyConfig.getMapList(playerName);
+            List<Map<?, ?>> entries = (List<Map<?, ?>>) historyConfig.getList(playerName);
+            if (entries == null) continue;
             List<HistoryEntry> list = new ArrayList<>();
             for (Map<?, ?> entry : entries) {
                 HistoryEntry he = new HistoryEntry();
@@ -52,7 +55,8 @@ public class PunishmentManager {
                 he.reason = (String) entry.get("reason");
                 he.duration = (String) entry.get("duration");
                 he.timestamp = ((Number) entry.get("timestamp")).longValue();
-                he.hidden = (boolean) entry.getOrDefault("hidden", false);
+                Object hiddenObj = entry.get("hidden");
+                he.hidden = hiddenObj != null && (boolean) hiddenObj;
                 list.add(he);
             }
             history.put(playerName, list);
@@ -63,7 +67,8 @@ public class PunishmentManager {
     private void loadActivePunishments() {
         bans.clear();
         mutes.clear();
-        // Загружаем активные баны и муты из истории
+        muteIssuers.clear();
+        muteReasons.clear();
         for (Map.Entry<String, List<HistoryEntry>> entry : history.entrySet()) {
             String playerName = entry.getKey();
             List<HistoryEntry> list = entry.getValue();
@@ -78,7 +83,17 @@ public class PunishmentManager {
                     long expiry = he.timestamp + parseTimeToMillis(he.duration);
                     if (expiry > System.currentTimeMillis()) {
                         mutes.put(playerName, expiry);
+                        muteIssuers.put(playerName, he.issuer);
+                        muteReasons.put(playerName, he.reason);
                     }
+                }
+                if (he.type.equals("ban") && he.duration.equals("навсегда")) {
+                    bans.put(playerName, -1L);
+                }
+                if (he.type.equals("mute") && he.duration.equals("навсегда")) {
+                    mutes.put(playerName, -1L);
+                    muteIssuers.put(playerName, he.issuer);
+                    muteReasons.put(playerName, he.reason);
                 }
             }
         }
@@ -109,15 +124,12 @@ public class PunishmentManager {
     }
 
     // ============================================
-    // ==== БАН (ОБЫЧНЫЙ) =====
+    // ==== БАН =====
     // ============================================
     public boolean banPlayer(String playerName, String issuer, String reason, String duration) {
         return banPlayer(playerName, issuer, reason, duration, false);
     }
 
-    // ============================================
-    // ==== БАН С ПАРАМЕТРОМ hidden =====
-    // ============================================
     public boolean banPlayer(String playerName, String issuer, String reason, String duration, boolean hidden) {
         if (isBanned(playerName)) {
             return false;
@@ -153,7 +165,7 @@ public class PunishmentManager {
         }
 
         if (adminLogger != null) {
-            adminLogger.log("BAN", playerName, issuer, reason + (hidden ? " (СКРЫТО)" : ""));
+            adminLogger.log("BAN", playerName, issuer, reason, duration, hidden ? "СКРЫТО" : "ПУБЛИЧНО");
         }
 
         return true;
@@ -177,22 +189,19 @@ public class PunishmentManager {
         Bukkit.broadcastMessage("§a" + playerName + " был разбанен! Причина: " + reason);
 
         if (adminLogger != null) {
-            adminLogger.log("UNBAN", playerName, issuer, reason);
+            adminLogger.log("UNBAN", playerName, issuer, reason, "навсегда", "ПУБЛИЧНО");
         }
 
         return true;
     }
 
     // ============================================
-    // ==== МУТ (ОБЫЧНЫЙ) =====
+    // ==== МУТ =====
     // ============================================
     public boolean mutePlayer(String playerName, String issuer, String reason, String duration) {
         return mutePlayer(playerName, issuer, reason, duration, false);
     }
 
-    // ============================================
-    // ==== МУТ С ПАРАМЕТРОМ hidden =====
-    // ============================================
     public boolean mutePlayer(String playerName, String issuer, String reason, String duration, boolean hidden) {
         if (isMuted(playerName)) {
             return false;
@@ -210,6 +219,8 @@ public class PunishmentManager {
 
         long expiry = duration.equals("навсегда") ? -1 : System.currentTimeMillis() + parseTimeToMillis(duration);
         mutes.put(playerName, expiry);
+        muteIssuers.put(playerName, issuer);
+        muteReasons.put(playerName, reason);
         saveHistory();
 
         String command;
@@ -228,7 +239,7 @@ public class PunishmentManager {
         }
 
         if (adminLogger != null) {
-            adminLogger.log("MUTE", playerName, issuer, reason + (hidden ? " (СКРЫТО)" : ""));
+            adminLogger.log("MUTE", playerName, issuer, reason, duration, hidden ? "СКРЫТО" : "ПУБЛИЧНО");
         }
 
         return true;
@@ -243,6 +254,8 @@ public class PunishmentManager {
         }
 
         mutes.remove(playerName);
+        muteIssuers.remove(playerName);
+        muteReasons.remove(playerName);
         saveHistory();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
@@ -252,22 +265,19 @@ public class PunishmentManager {
         Bukkit.broadcastMessage("§a" + playerName + " был размучен! Причина: " + reason);
 
         if (adminLogger != null) {
-            adminLogger.log("UNMUTE", playerName, issuer, reason);
+            adminLogger.log("UNMUTE", playerName, issuer, reason, "навсегда", "ПУБЛИЧНО");
         }
 
         return true;
     }
 
     // ============================================
-    // ==== КИК (ОБЫЧНЫЙ) =====
+    // ==== КИК =====
     // ============================================
     public boolean kickPlayer(String playerName, String issuer, String reason) {
         return kickPlayer(playerName, issuer, reason, false);
     }
 
-    // ============================================
-    // ==== КИК С ПАРАМЕТРОМ hidden =====
-    // ============================================
     public boolean kickPlayer(String playerName, String issuer, String reason, boolean hidden) {
         Player player = Bukkit.getPlayer(playerName);
         if (player == null) {
@@ -292,7 +302,7 @@ public class PunishmentManager {
         }
 
         if (adminLogger != null) {
-            adminLogger.log("KICK", playerName, issuer, reason + (hidden ? " (СКРЫТО)" : ""));
+            adminLogger.log("KICK", playerName, issuer, reason, "навсегда", hidden ? "СКРЫТО" : "ПУБЛИЧНО");
         }
 
         return true;
@@ -327,6 +337,41 @@ public class PunishmentManager {
     }
 
     // ============================================
+    // ==== ПРОВЕРКИ ДЛЯ CommandListener =====
+    // ============================================
+    public boolean canPlayerChat(Player player) {
+        return !isMuted(player.getName());
+    }
+
+    public String getMuteIssuer(String playerName) {
+        return muteIssuers.get(playerName);
+    }
+
+    public String getMuteReason(String playerName) {
+        return muteReasons.get(playerName);
+    }
+
+    public void checkOnJoin(Player player) {
+        String name = player.getName();
+        if (isBanned(name)) {
+            Long expiry = bans.get(name);
+            String expiryStr = expiry == -1 ? "навсегда" : getTimeLeft(expiry);
+            player.kickPlayer("§cВы забанены!\n§7Причина: " + getBanReason(name) + "\n§7Осталось: " + expiryStr);
+        }
+    }
+
+    private String getBanReason(String playerName) {
+        List<HistoryEntry> list = history.get(playerName);
+        if (list == null || list.isEmpty()) return "Неизвестно";
+        for (int i = list.size() - 1; i >= 0; i--) {
+            if (list.get(i).type.equals("ban")) {
+                return list.get(i).reason;
+            }
+        }
+        return "Неизвестно";
+    }
+
+    // ============================================
     // ==== ПРОВЕРКИ =====
     // ============================================
     public boolean isBanned(String playerName) {
@@ -346,6 +391,8 @@ public class PunishmentManager {
         if (expiry == -1) return true;
         if (System.currentTimeMillis() > expiry) {
             mutes.remove(playerName);
+            muteIssuers.remove(playerName);
+            muteReasons.remove(playerName);
             return false;
         }
         return true;
