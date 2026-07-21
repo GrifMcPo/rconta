@@ -1,7 +1,6 @@
 package com.grifmcpo.consolebot;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -28,7 +27,6 @@ public class PunishmentManager {
     private final Map<String, String> banReasons = new ConcurrentHashMap<>();
 
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
-    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss");
 
     public PunishmentManager(JavaPlugin plugin, AdminLogger adminLogger) {
         this.plugin = plugin;
@@ -211,9 +209,7 @@ public class PunishmentManager {
             }
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
-            // ============================================
-            // ==== КИКАЕМ ИГРОКА СРАЗУ =====
-            // ============================================
+            // Кикаем игрока сразу
             Player player = Bukkit.getPlayer(finalPlayerName);
             if (player != null && player.isOnline()) {
                 String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
@@ -436,6 +432,58 @@ public class PunishmentManager {
     }
 
     // ============================================
+    // ==== СПИСКИ =====
+    // ============================================
+    public List<String> getBanList() {
+        return getBanList(1, Integer.MAX_VALUE);
+    }
+
+    public List<String> getBanList(int page, int pageSize) {
+        List<String> result = new ArrayList<>();
+        int start = (page - 1) * pageSize;
+        int index = 0;
+
+        for (Map.Entry<String, Long> entry : bans.entrySet()) {
+            if (index >= start && result.size() < pageSize) {
+                String playerName = entry.getKey();
+                long expiry = entry.getValue();
+                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
+                result.add("§c" + playerName + " §7— §f" + expiryStr);
+            }
+            index++;
+        }
+        return result;
+    }
+
+    public List<String> getMuteList() {
+        return getMuteList(1, Integer.MAX_VALUE);
+    }
+
+    public List<String> getMuteList(int page, int pageSize) {
+        List<String> result = new ArrayList<>();
+        int start = (page - 1) * pageSize;
+        int index = 0;
+
+        for (Map.Entry<String, Long> entry : mutes.entrySet()) {
+            if (index >= start && result.size() < pageSize) {
+                String playerName = entry.getKey();
+                long expiry = entry.getValue();
+                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
+                result.add("§e" + playerName + " §7— §f" + expiryStr);
+            }
+            index++;
+        }
+        return result;
+    }
+
+    // ============================================
+    // ==== ИСТОРИЯ =====
+    // ============================================
+    public List<HistoryEntry> getHistory(String playerName) {
+        return history.getOrDefault(playerName, new ArrayList<>());
+    }
+
+    // ============================================
     // ==== ПРОВЕРКИ =====
     // ============================================
     public boolean isBanned(String playerName) {
@@ -535,15 +583,23 @@ public class PunishmentManager {
                 "§fИстекает через: §c" + expiryStr;
     }
 
+    public boolean checkOnJoin(Player player) {
+        if (isBanned(player.getName())) {
+            player.kickPlayer(getFullBanMessage(player.getName()));
+            return false;
+        }
+        return true;
+    }
+
+    // ============================================
+    // ==== ВСПОМОГАТЕЛЬНЫЕ =====
+    // ============================================
     private void addHistorySync(String playerName, HistoryEntry entry) {
         List<HistoryEntry> list = history.computeIfAbsent(playerName, k -> new ArrayList<>());
         list.add(entry);
         saveHistory();
     }
 
-    // ============================================
-    // ==== ВСПОМОГАТЕЛЬНЫЕ =====
-    // ============================================
     private long parseTimeToMillis(String time) {
         if (time == null || time.equals("навсегда")) return Long.MAX_VALUE;
         char unit = time.charAt(time.length() - 1);
@@ -565,12 +621,12 @@ public class PunishmentManager {
         char unit = duration.charAt(duration.length() - 1);
         long value = Long.parseLong(duration.substring(0, duration.length() - 1));
         switch (unit) {
-            case 's': return value + " секунд";
-            case 'm': return value + " минут";
-            case 'h': return value + " часов";
-            case 'd': return value + " дней";
-            case 'w': return value + " недель";
-            case 'M': return value + " месяцев";
+            case 's': return value + " сек";
+            case 'm': return value + " мин";
+            case 'h': return value + " ч";
+            case 'd': return value + " дн";
+            case 'w': return value + " нед";
+            case 'M': return value + " мес";
             case 'y': return value + " лет";
             default: return duration;
         }
@@ -592,7 +648,6 @@ public class PunishmentManager {
         if (days > 0) sb.append(days).append(" дн ");
         if (hours > 0) sb.append(hours).append(" ч ");
         if (minutes > 0 && (days == 0 || hours == 0)) sb.append(minutes).append(" мин ");
-        if (seconds > 0 && days == 0 && hours == 0 && minutes == 0) sb.append(seconds).append(" сек");
         if (sb.length() == 0) return "менее минуты";
         return sb.toString().trim();
     }
@@ -608,18 +663,6 @@ public class PunishmentManager {
 
     public String getFormattedDateTime(long timestamp) {
         return dateFormat.format(new Date(timestamp));
-    }
-
-    public String getFormattedTime(long timestamp) {
-        return timeFormat.format(new Date(timestamp));
-    }
-
-    public boolean checkOnJoin(Player player) {
-        if (isBanned(player.getName())) {
-            player.kickPlayer(getFullBanMessage(player.getName()));
-            return false;
-        }
-        return true;
     }
 
     // ============================================
