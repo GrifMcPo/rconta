@@ -1,5 +1,5 @@
 package com.grifmcpo.consolebot;
-
+ 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
