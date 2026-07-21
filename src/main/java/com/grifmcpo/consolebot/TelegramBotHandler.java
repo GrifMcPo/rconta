@@ -30,8 +30,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
     private final List<Long> hiddenViewers = new ArrayList<>();
 
-    private static final String SEPARATOR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
     public TelegramBotHandler(String token, TelegramConsoleBot plugin, PlayerManager playerManager,
                               CommandLogger commandLogger, LogsCommand logsCommand,
                               CommandExecutor commandExecutor, PunishmentManager punishmentManager,
@@ -170,7 +168,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 }
 
                 deleteMessage(chatId, messageId);
-                sendResponse(Long.parseLong(chatId), result);
+                sendMessage(chatId, result);
                 return;
             }
 
@@ -240,9 +238,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     // ============================================
     private void handleRconCommand(long chatId, String command, long userId) {
 
-        // ============================================
-        // ==== !rcon (без сервера) - помощь =====
-        // ============================================
         if (command.equalsIgnoreCase("rcon") || command.trim().isEmpty()) {
             sendHelp(chatId, userId);
             return;
@@ -258,15 +253,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // Проверяем доступ к команде
             if (!groupManager.hasPermission(userId, "!rcon global " + cmd.split(" ")[0])) {
                 sendMessage(chatId, "[БОТ] У вас нет доступа к данной команде!");
                 return;
             }
 
-            // ============================================
-            // ==== ОБРАБОТКА СПЕЦИАЛЬНЫХ КОМАНД =====
-            // ============================================
+            // Специальные команды
             if (cmd.startsWith("checkban ")) {
                 handleCheckBan(chatId, cmd);
                 return;
@@ -309,20 +301,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 return;
             }
 
-            // Остальные команды отправляем на сервер
+            // Остальные команды на сервер
             executeServerCommand(chatId, cmd, userId);
             return;
         }
 
-        // Если команда не распознана
         sendHelp(chatId, userId);
     }
 
-    // ============================================
-    // ==== ОБРАБОТКА ОТДЕЛЬНЫХ КОМАНД =====
-    // ============================================
+    // ===== ОТДЕЛЬНЫЕ КОМАНДЫ =====
 
-    // --- checkban ---
     private void handleCheckBan(long chatId, String cmd) {
         String[] parts = cmd.split(" ");
         if (parts.length < 2) {
@@ -355,7 +343,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, response);
     }
 
-    // --- checkmute ---
     private void handleCheckMute(long chatId, String cmd) {
         String[] parts = cmd.split(" ");
         if (parts.length < 2) {
@@ -388,7 +375,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, response);
     }
 
-    // --- messageall ---
     private void handleMessageAll(long chatId, String cmd, long userId) {
         String message = cmd.substring(11);
         if (message.trim().isEmpty()) {
@@ -405,7 +391,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, "[БОТ] Сообщение отправлено " + count + " пользователям!");
     }
 
-    // --- bc / bcast ---
     private void handleBroadcast(long chatId, String cmd, long userId) {
         String[] parts = cmd.split(" ");
         if (parts.length < 2) {
@@ -421,7 +406,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, "[БОТ] " + format.replaceAll("§[0-9a-fk-or]", ""));
     }
 
-    // --- banlist ---
     private void handleBanList(long chatId, String cmd) {
         int page = 1;
         String[] parts = cmd.split(" ");
@@ -448,7 +432,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
     }
 
-    // --- mutelist ---
     private void handleMuteList(long chatId, String cmd) {
         int page = 1;
         String[] parts = cmd.split(" ");
@@ -475,7 +458,6 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         }
     }
 
-    // --- shist / hist ---
     private void handleShist(long chatId, String cmd) {
         String[] parts = cmd.split(" ");
         if (parts.length < 2) {
@@ -515,14 +497,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, response.toString());
     }
 
-    // --- logs ---
     private void handleLogs(long chatId, String cmd) {
         String[] args = cmd.split(" ");
         SendMessage response = logsCommand.handleLogs(chatId, args);
         try { execute(response); } catch (TelegramApiException e) { e.printStackTrace(); }
     }
 
-    // --- tex ---
     private void handleTex(long chatId, String cmd, long userId) {
         if (!groupManager.isAdmin(userId) && !groupManager.isOwner(userId)) {
             sendMessage(chatId, "[БОТ] У вас нет доступа к данной команде!");
@@ -539,9 +519,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         sendMessage(chatId, "[БОТ] Техработы " + (state ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"));
     }
 
-    // --- punishment (ban/mute/kick/unban/unmute) ---
     private void handlePunishment(long chatId, String cmd, long userId) {
-        // Проверяем, есть ли флаг -s
         String[] parts = cmd.split(" ");
         boolean hidden = false;
         String lastArg = parts[parts.length - 1];
@@ -551,17 +529,16 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 sendMessage(chatId, "[БОТ] У вас нет прав на скрытые наказания!");
                 return;
             }
-            // Убираем -s из команды
             cmd = String.join(" ", Arrays.copyOf(parts, parts.length - 1));
+            parts = cmd.split(" ");
         }
 
-        // Отправляем на подтверждение
         String action = parts[0];
         String playerName = parts[1];
         String duration = "навсегда";
         String reason = "";
         int start = 2;
-        int end = hidden ? parts.length - 1 : parts.length;
+        int end = parts.length;
 
         if (end > start + 1 && punishmentManager.isValidTime(parts[2])) {
             duration = parts[2];
