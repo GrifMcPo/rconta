@@ -255,7 +255,7 @@ public class PunishmentManager {
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
             // ============================================
-            // ==== КИК С КРАСИВЫМ СООБЩЕНИЕМ =====
+            // ==== КИК С КРАСИВЫМ СООБЩЕНИЕМ ПРИ БАНЕ =====
             // ============================================
             Player player = Bukkit.getPlayer(finalPlayerName);
             if (player != null && player.isOnline()) {
@@ -587,11 +587,18 @@ public class PunishmentManager {
     }
 
     // ============================================
-    // ==== ДЛЯ CHAT =====
+    // ==== ДЛЯ CHAT (СООБЩЕНИЕ ПРИ МУТЕ) =====
     // ============================================
     public boolean canPlayerChat(Player player) {
         if (player == null) return true;
-        return !isMuted(player.getName());
+        if (isMuted(player.getName())) {
+            String msg = getMuteMessage(player.getName());
+            if (msg != null) {
+                player.sendMessage(msg);
+            }
+            return false;
+        }
+        return true;
     }
 
     public String getMuteIssuer(String playerName) {
@@ -647,8 +654,10 @@ public class PunishmentManager {
         String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
 
         return "§c§lУ вас имеется активный мут!\n" +
+                "\n" +
                 "§fПричина: §c" + reason + "\n" +
-                "§fВыдал: §c" + issuer + "\n" +
+                "§fСервер: §cглобальный\n" +
+                "§fВыдал: §9" + issuer + "\n" +
                 "§fИстекает через: §c" + expiryStr;
     }
 
