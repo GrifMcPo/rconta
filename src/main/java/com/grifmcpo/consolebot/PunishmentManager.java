@@ -81,49 +81,22 @@ public class PunishmentManager {
         for (Map.Entry<String, List<HistoryEntry>> entry : history.entrySet()) {
             String playerName = entry.getKey();
             List<HistoryEntry> list = entry.getValue();
-
-            // Идём с конца, чтобы взять последнее наказание
-            for (int i = list.size() - 1; i >= 0; i--) {
-                HistoryEntry he = list.get(i);
-
+            for (HistoryEntry he : list) {
                 if (he.type.equals("ban")) {
-                    // Проверяем, не было ли разбана после этого бана
-                    boolean wasUnbanned = false;
-                    for (int j = i + 1; j < list.size(); j++) {
-                        if (list.get(j).type.equals("unban")) {
-                            wasUnbanned = true;
-                            break;
-                        }
+                    long expiry = he.duration.equals("навсегда") ? -1 : he.timestamp + parseTimeToMillis(he.duration);
+                    if (expiry == -1 || expiry > System.currentTimeMillis()) {
+                        bans.put(playerName, expiry);
+                        banIssuers.put(playerName, he.issuer);
+                        banReasons.put(playerName, he.reason);
                     }
-                    if (!wasUnbanned) {
-                        long expiry = he.duration.equals("навсегда") ? -1 : he.timestamp + parseTimeToMillis(he.duration);
-                        if (expiry == -1 || expiry > System.currentTimeMillis()) {
-                            bans.put(playerName, expiry);
-                            banIssuers.put(playerName, he.issuer);
-                            banReasons.put(playerName, he.reason);
-                        }
-                    }
-                    break; // берём только последний бан
                 }
-
                 if (he.type.equals("mute")) {
-                    // Проверяем, не было ли размута после этого мута
-                    boolean wasUnmuted = false;
-                    for (int j = i + 1; j < list.size(); j++) {
-                        if (list.get(j).type.equals("unmute")) {
-                            wasUnmuted = true;
-                            break;
-                        }
+                    long expiry = he.duration.equals("навсегда") ? -1 : he.timestamp + parseTimeToMillis(he.duration);
+                    if (expiry == -1 || expiry > System.currentTimeMillis()) {
+                        mutes.put(playerName, expiry);
+                        muteIssuers.put(playerName, he.issuer);
+                        muteReasons.put(playerName, he.reason);
                     }
-                    if (!wasUnmuted) {
-                        long expiry = he.duration.equals("навсегда") ? -1 : he.timestamp + parseTimeToMillis(he.duration);
-                        if (expiry == -1 || expiry > System.currentTimeMillis()) {
-                            mutes.put(playerName, expiry);
-                            muteIssuers.put(playerName, he.issuer);
-                            muteReasons.put(playerName, he.reason);
-                        }
-                    }
-                    break; // берём только последний мут
                 }
             }
         }
@@ -151,17 +124,6 @@ public class PunishmentManager {
                 banReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие бана: " + playerName);
                 Bukkit.broadcastMessage("§aИгрок " + playerName + " был автоматически разбанен (срок истек)");
-
-                // Добавляем запись об автоснятии
-                HistoryEntry autoEntry = new HistoryEntry();
-                autoEntry.type = "unban";
-                autoEntry.player = playerName;
-                autoEntry.issuer = "Автоснятие";
-                autoEntry.reason = "Срок истек";
-                autoEntry.duration = "навсегда";
-                autoEntry.timestamp = System.currentTimeMillis();
-                autoEntry.hidden = false;
-                addHistorySync(playerName, autoEntry);
             }
         }
 
@@ -173,18 +135,6 @@ public class PunishmentManager {
                 muteIssuers.remove(playerName);
                 muteReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие мута: " + playerName);
-
-                // Добавляем запись об автоснятии
-                HistoryEntry autoEntry = new HistoryEntry();
-                autoEntry.type = "unmute";
-                autoEntry.player = playerName;
-                autoEntry.issuer = "Автоснятие";
-                autoEntry.reason = "Срок истек";
-                autoEntry.duration = "навсегда";
-                autoEntry.timestamp = System.currentTimeMillis();
-                autoEntry.hidden = false;
-                addHistorySync(playerName, autoEntry);
-
                 Player p = Bukkit.getPlayer(playerName);
                 if (p != null && p.isOnline()) {
                     p.sendMessage("§aВаш мут был автоматически снят (срок истек)");
@@ -259,6 +209,7 @@ public class PunishmentManager {
             }
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
+            // Кикаем игрока сразу
             Player player = Bukkit.getPlayer(finalPlayerName);
             if (player != null && player.isOnline()) {
                 String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
@@ -297,17 +248,6 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            // Добавляем запись о разбане в историю
-            HistoryEntry entry = new HistoryEntry();
-            entry.type = "unban";
-            entry.player = finalPlayerName;
-            entry.issuer = finalIssuer;
-            entry.reason = finalReason;
-            entry.duration = "навсегда";
-            entry.timestamp = System.currentTimeMillis();
-            entry.hidden = false;
-            addHistorySync(finalPlayerName, entry);
-
             bans.remove(finalPlayerName);
             banIssuers.remove(finalPlayerName);
             banReasons.remove(finalPlayerName);
@@ -397,17 +337,6 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            // Добавляем запись о размуте в историю
-            HistoryEntry entry = new HistoryEntry();
-            entry.type = "unmute";
-            entry.player = finalPlayerName;
-            entry.issuer = finalIssuer;
-            entry.reason = finalReason;
-            entry.duration = "навсегда";
-            entry.timestamp = System.currentTimeMillis();
-            entry.hidden = false;
-            addHistorySync(finalPlayerName, entry);
-
             mutes.remove(finalPlayerName);
             muteIssuers.remove(finalPlayerName);
             muteReasons.remove(finalPlayerName);
