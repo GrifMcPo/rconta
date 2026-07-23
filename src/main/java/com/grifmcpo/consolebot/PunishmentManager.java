@@ -82,10 +82,12 @@ public class PunishmentManager {
             String playerName = entry.getKey();
             List<HistoryEntry> list = entry.getValue();
 
+            // Идём с конца, чтобы взять последнее наказание
             for (int i = list.size() - 1; i >= 0; i--) {
                 HistoryEntry he = list.get(i);
 
                 if (he.type.equals("ban")) {
+                    // Проверяем, не было ли разбана после этого бана
                     boolean wasUnbanned = false;
                     for (int j = i + 1; j < list.size(); j++) {
                         if (list.get(j).type.equals("unban")) {
@@ -101,10 +103,11 @@ public class PunishmentManager {
                             banReasons.put(playerName, he.reason);
                         }
                     }
-                    break;
+                    break; // берём только последний бан
                 }
 
                 if (he.type.equals("mute")) {
+                    // Проверяем, не было ли размута после этого мута
                     boolean wasUnmuted = false;
                     for (int j = i + 1; j < list.size(); j++) {
                         if (list.get(j).type.equals("unmute")) {
@@ -120,7 +123,7 @@ public class PunishmentManager {
                             muteReasons.put(playerName, he.reason);
                         }
                     }
-                    break;
+                    break; // берём только последний мут
                 }
             }
         }
@@ -149,6 +152,7 @@ public class PunishmentManager {
                 plugin.getLogger().info("✅ Автоснятие бана: " + playerName);
                 Bukkit.broadcastMessage("§aИгрок " + playerName + " был автоматически разбанен (срок истек)");
 
+                // Добавляем запись об автоснятии
                 HistoryEntry autoEntry = new HistoryEntry();
                 autoEntry.type = "unban";
                 autoEntry.player = playerName;
@@ -170,6 +174,7 @@ public class PunishmentManager {
                 muteReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие мута: " + playerName);
 
+                // Добавляем запись об автоснятии
                 HistoryEntry autoEntry = new HistoryEntry();
                 autoEntry.type = "unmute";
                 autoEntry.player = playerName;
@@ -266,8 +271,8 @@ public class PunishmentManager {
             }
 
             if (!finalHidden) {
-                String msg = "§c[БАН] §f" + finalIssuer + " §7забанил §f" + finalPlayerName +
-                        " §7на §f" + formatDuration(finalDuration) + " §7по причине: §f" + finalReason;
+                String msg = "§fИгрок §9" + finalIssuer + " §fзабанил §c" + finalPlayerName +
+                        " §fна §b" + formatDuration(finalDuration) + " §fпо причине: §7" + finalReason;
                 Bukkit.broadcastMessage(msg);
             }
 
@@ -292,6 +297,7 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
+            // Добавляем запись о разбане в историю
             HistoryEntry entry = new HistoryEntry();
             entry.type = "unban";
             entry.player = finalPlayerName;
@@ -309,8 +315,8 @@ public class PunishmentManager {
 
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "pardon " + finalPlayerName);
 
-            String msg = "§a[РАЗБАН] §f" + finalIssuer + " §7разбанил §f" + finalPlayerName +
-                    " §7по причине: §f" + finalReason;
+            String msg = "§fИгрок §9" + finalIssuer + " §aразбанил §c" + finalPlayerName +
+                    " §fпо причине: §7" + finalReason;
             Bukkit.broadcastMessage(msg);
 
             if (adminLogger != null) {
@@ -365,8 +371,8 @@ public class PunishmentManager {
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
             if (!finalHidden) {
-                String msg = "§e[МУТ] §f" + finalIssuer + " §7замутил §f" + finalPlayerName +
-                        " §7на §f" + formatDuration(finalDuration) + " §7по причине: §f" + finalReason;
+                String msg = "§fИгрок §9" + finalIssuer + " §fзамутил §c" + finalPlayerName +
+                        " §fна §b" + formatDuration(finalDuration) + " §fпо причине: §7" + finalReason;
                 Bukkit.broadcastMessage(msg);
             }
 
@@ -391,6 +397,7 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
+            // Добавляем запись о размуте в историю
             HistoryEntry entry = new HistoryEntry();
             entry.type = "unmute";
             entry.player = finalPlayerName;
@@ -408,8 +415,8 @@ public class PunishmentManager {
 
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "unmute " + finalPlayerName);
 
-            String msg = "§a[РАЗМУТ] §f" + finalIssuer + " §7размутил §f" + finalPlayerName +
-                    " §7по причине: §f" + finalReason;
+            String msg = "§fИгрок §9" + finalIssuer + " §aразмутил §c" + finalPlayerName +
+                    " §fпо причине: §7" + finalReason;
             Bukkit.broadcastMessage(msg);
 
             if (adminLogger != null) {
@@ -454,8 +461,8 @@ public class PunishmentManager {
             player.kickPlayer("§cВы были кикнуты!\n§7Причина: " + finalReason);
 
             if (!finalHidden) {
-                String msg = "§6[КИК] §f" + finalIssuer + " §7кикнул §f" + finalPlayerName +
-                        " §7по причине: §f" + finalReason;
+                String msg = "§fИгрок §9" + finalIssuer + " §fкикнул §c" + finalPlayerName +
+                        " §fпо причине: §7" + finalReason;
                 Bukkit.broadcastMessage(msg);
             }
 
@@ -511,8 +518,8 @@ public class PunishmentManager {
             if (index >= start && result.size() < pageSize) {
                 String playerName = entry.getKey();
                 long expiry = entry.getValue();
-                String expiryStr = expiry == -1 ? "§cНавсегда" : "§f" + formatTimeLeft(expiry);
-                result.add("§c" + playerName + " §7— " + expiryStr);
+                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
+                result.add("§c" + playerName + " §7— §f" + expiryStr);
             }
             index++;
         }
@@ -532,8 +539,8 @@ public class PunishmentManager {
             if (index >= start && result.size() < pageSize) {
                 String playerName = entry.getKey();
                 long expiry = entry.getValue();
-                String expiryStr = expiry == -1 ? "§cНавсегда" : "§f" + formatTimeLeft(expiry);
-                result.add("§e" + playerName + " §7— " + expiryStr);
+                String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
+                result.add("§e" + playerName + " §7— §f" + expiryStr);
             }
             index++;
         }
@@ -709,9 +716,9 @@ public class PunishmentManager {
         hours %= 24;
 
         StringBuilder sb = new StringBuilder();
-        if (days > 0) sb.append(days).append("д ");
-        if (hours > 0) sb.append(hours).append("ч ");
-        if (minutes > 0 && (days == 0 || hours == 0)) sb.append(minutes).append("м");
+        if (days > 0) sb.append(days).append(" дн ");
+        if (hours > 0) sb.append(hours).append(" ч ");
+        if (minutes > 0 && (days == 0 || hours == 0)) sb.append(minutes).append(" мин ");
         if (sb.length() == 0) return "менее минуты";
         return sb.toString().trim();
     }
