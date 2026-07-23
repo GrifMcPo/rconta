@@ -201,19 +201,14 @@ public class PunishmentManager {
             banReasons.put(finalPlayerName, finalReason);
             saveHistory();
 
-            String command;
-            if (finalDuration.equals("навсегда")) {
-                command = "ban " + finalPlayerName + " " + finalReason;
-            } else {
-                command = "tempban " + finalPlayerName + " " + finalDuration + " " + finalReason;
-            }
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            // ❌ КОНСОЛЬНЫЕ КОМАНДЫ УДАЛЕНЫ — ИСПОЛЬЗУЕМ КАСТОМНУЮ СИСТЕМУ
 
-            // Кикаем игрока сразу
+            // Кикаем игрока с красивым сообщением
             Player player = Bukkit.getPlayer(finalPlayerName);
             if (player != null && player.isOnline()) {
                 String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
                 String kickMessage = "§c§lВаш аккаунт заблокирован!\n" +
+                        "\n" +
                         "§fПричина: §c" + finalReason + "\n" +
                         "§fСервер: §cглобальный\n" +
                         "§fВыдал: §9" + finalIssuer + "\n" +
@@ -253,7 +248,7 @@ public class PunishmentManager {
             banReasons.remove(finalPlayerName);
             saveHistory();
 
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "pardon " + finalPlayerName);
+            // ❌ КОНСОЛЬНЫЕ КОМАНДЫ УДАЛЕНЫ
 
             String msg = "§fИгрок §9" + finalIssuer + " §aразбанил §c" + finalPlayerName +
                     " §fпо причине: §7" + finalReason;
@@ -302,13 +297,7 @@ public class PunishmentManager {
             muteReasons.put(finalPlayerName, finalReason);
             saveHistory();
 
-            String command;
-            if (finalDuration.equals("навсегда")) {
-                command = "mute " + finalPlayerName + " " + finalReason;
-            } else {
-                command = "tempmute " + finalPlayerName + " " + finalDuration + " " + finalReason;
-            }
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            // ❌ КОНСОЛЬНЫЕ КОМАНДЫ УДАЛЕНЫ
 
             if (!finalHidden) {
                 String msg = "§fИгрок §9" + finalIssuer + " §fзамутил §c" + finalPlayerName +
@@ -342,7 +331,7 @@ public class PunishmentManager {
             muteReasons.remove(finalPlayerName);
             saveHistory();
 
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "unmute " + finalPlayerName);
+            // ❌ КОНСОЛЬНЫЕ КОМАНДЫ УДАЛЕНЫ
 
             String msg = "§fИгрок §9" + finalIssuer + " §aразмутил §c" + finalPlayerName +
                     " §fпо причине: §7" + finalReason;
@@ -564,6 +553,7 @@ public class PunishmentManager {
         String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
 
         return "§c§lВаш аккаунт заблокирован!\n" +
+                "\n" +
                 "§fПричина: §c" + reason + "\n" +
                 "§fСервер: §cглобальный\n" +
                 "§fВыдал: §9" + issuer + "\n" +
@@ -578,8 +568,10 @@ public class PunishmentManager {
         String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
 
         return "§c§lУ вас имеется активный мут!\n" +
+                "\n" +
                 "§fПричина: §c" + reason + "\n" +
-                "§fВыдал: §c" + issuer + "\n" +
+                "§fСервер: §cглобальный\n" +
+                "§fВыдал: §9" + issuer + "\n" +
                 "§fИстекает через: §c" + expiryStr;
     }
 
