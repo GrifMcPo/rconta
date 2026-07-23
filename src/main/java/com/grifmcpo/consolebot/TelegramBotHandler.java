@@ -62,7 +62,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
     private void notifyStaffOnly(String message) {
         int count = 0;
         for (long id : hiddenViewers) {
-            try { sendMessage(id, "🔒 " + message); count++; } catch (Exception e) {}
+            try { sendMessage(id, "[СТАФФ] " + message); count++; } catch (Exception e) {}
         }
         plugin.getLogger().info("🔒 Скрытое уведомление отправлено " + count + " пользователям");
     }
