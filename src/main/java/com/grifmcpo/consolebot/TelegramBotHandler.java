@@ -111,7 +111,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     case "ban":
                         success = punishmentManager.banPlayer(playerName, issuerName, reason, duration, hidden);
                         if (success) {
-                            result = "§c[БАН] §f" + issuerName + " §7забанил §f" + playerName + " §7на §f" + duration + " §7по причине: §f" + reason;
+                            result = "✅ " + issuerName + " забанил " + playerName + " на " + duration + " по причине: " + reason;
                             if (hidden) {
                                 result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff)";
                                 notifyStaffOnly("🔒 СКРЫТЫЙ БАН\n" +
@@ -128,7 +128,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     case "mute":
                         success = punishmentManager.mutePlayer(playerName, issuerName, reason, duration, hidden);
                         if (success) {
-                            result = "§e[МУТ] §f" + issuerName + " §7замутил §f" + playerName + " §7на §f" + duration + " §7по причине: §f" + reason;
+                            result = "✅ " + issuerName + " замутил " + playerName + " на " + duration + " по причине: " + reason;
                             if (hidden) {
                                 result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff)";
                                 notifyStaffOnly("🔒 СКРЫТЫЙ МУТ\n" +
@@ -145,7 +145,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     case "kick":
                         success = punishmentManager.kickPlayer(playerName, issuerName, reason, hidden);
                         if (success) {
-                            result = "§6[КИК] §f" + issuerName + " §7кикнул §f" + playerName + " §7по причине: §f" + reason;
+                            result = "✅ " + issuerName + " кикнул " + playerName + " по причине: " + reason;
                             if (hidden) {
                                 result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ (видят только staff)";
                                 notifyStaffOnly("🔒 СКРЫТЫЙ КИК\n" +
@@ -161,7 +161,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     case "unban":
                         success = punishmentManager.unbanPlayer(playerName, issuerName, reason);
                         if (success) {
-                            result = "§a[РАЗБАН] §f" + issuerName + " §7разбанил §f" + playerName + " §7по причине: §f" + reason;
+                            result = "✅ " + issuerName + " разбанил " + playerName + " по причине: " + reason;
                         } else {
                             result = "❌ " + playerName + " не забанен!";
                         }
@@ -170,7 +170,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                     case "unmute":
                         success = punishmentManager.unmutePlayer(playerName, issuerName, reason);
                         if (success) {
-                            result = "§a[РАЗМУТ] §f" + issuerName + " §7размутил §f" + playerName + " §7по причине: §f" + reason;
+                            result = "✅ " + issuerName + " размутил " + playerName + " по причине: " + reason;
                         } else {
                             result = "❌ " + playerName + " не замучен!";
                         }
@@ -381,7 +381,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             case "ban":
                 success = punishmentManager.banPlayer(playerName, issuer, reason, duration, hidden);
                 if (success) {
-                    result = "§c[БАН] §f" + issuer + " §7забанил §f" + playerName + " §7на §f" + duration + " §7по причине: §f" + reason;
+                    result = "✅ " + issuer + " забанил " + playerName + " на " + duration + " по причине: " + reason;
                     if (hidden) {
                         result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
                         notifyStaffOnly("🔒 СКРЫТЫЙ БАН\n" +
@@ -398,7 +398,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             case "mute":
                 success = punishmentManager.mutePlayer(playerName, issuer, reason, duration, hidden);
                 if (success) {
-                    result = "§e[МУТ] §f" + issuer + " §7замутил §f" + playerName + " §7на §f" + duration + " §7по причине: §f" + reason;
+                    result = "✅ " + issuer + " замутил " + playerName + " на " + duration + " по причине: " + reason;
                     if (hidden) {
                         result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
                         notifyStaffOnly("🔒 СКРЫТЫЙ МУТ\n" +
@@ -415,7 +415,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             case "kick":
                 success = punishmentManager.kickPlayer(playerName, issuer, reason, hidden);
                 if (success) {
-                    result = "§6[КИК] §f" + issuer + " §7кикнул §f" + playerName + " §7по причине: §f" + reason;
+                    result = "✅ " + issuer + " кикнул " + playerName + " по причине: " + reason;
                     if (hidden) {
                         result += "\n🔒 СКРЫТОЕ НАКАЗАНИЕ";
                         notifyStaffOnly("🔒 СКРЫТЫЙ КИК\n" +
@@ -431,7 +431,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             case "unban":
                 success = punishmentManager.unbanPlayer(playerName, issuer, reason);
                 if (success) {
-                    result = "§a[РАЗБАН] §f" + issuer + " §7разбанил §f" + playerName + " §7по причине: §f" + reason;
+                    result = "✅ " + issuer + " разбанил " + playerName + " по причине: " + reason;
                 } else {
                     result = "❌ " + playerName + " не забанен!";
                 }
@@ -440,7 +440,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             case "unmute":
                 success = punishmentManager.unmutePlayer(playerName, issuer, reason);
                 if (success) {
-                    result = "§a[РАЗМУТ] §f" + issuer + " §7размутил §f" + playerName + " §7по причине: §f" + reason;
+                    result = "✅ " + issuer + " размутил " + playerName + " по причине: " + reason;
                 } else {
                     result = "❌ " + playerName + " не замучен!";
                 }
@@ -463,7 +463,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         boolean isBanned = punishmentManager.isBanned(playerName);
         if (!isBanned) {
-            sendMessage(chatId, "§aИгрок §f" + playerName + " §aне забанен.");
+            sendMessage(chatId, "✅ Игрок " + playerName + " не забанен.");
             return;
         }
 
@@ -472,13 +472,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String expiry = punishmentManager.getBanExpiry(playerName);
         PunishmentManager.HistoryEntry entry = punishmentManager.getLastBan(playerName);
 
-        String response = "§c[ИНФОРМАЦИЯ О БАНЕ]\n" +
-                "§fИгрок: §c" + playerName + "\n" +
-                "§fПричина: §7" + reason + "\n" +
-                "§fВыдал: §9" + issuer + "\n" +
-                "§fДата: §7" + punishmentManager.getFormattedDateTime(entry.timestamp) + "\n" +
-                "§fИстекает: §7" + expiry + "\n" +
-                "§fНавсегда: §7" + (entry.duration.equals("навсегда") ? "§aДа" : "§cНет");
+        String response = "📋 ИНФОРМАЦИЯ О БАНЕ:\n";
+        response += "👤 Игрок: " + playerName + "\n";
+        response += "📝 Причина: " + reason + "\n";
+        response += "👤 Выдал: " + issuer + "\n";
+        response += "📅 Дата: " + punishmentManager.getFormattedDateTime(entry.timestamp) + "\n";
+        response += "⏱ Истекает: " + expiry + "\n";
+        response += "♾ Навсегда: " + (entry.duration.equals("навсегда") ? "Да" : "Нет");
 
         sendMessage(chatId, response);
     }
@@ -496,7 +496,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         boolean isMuted = punishmentManager.isMuted(playerName);
         if (!isMuted) {
-            sendMessage(chatId, "§aИгрок §f" + playerName + " §aне замучен.");
+            sendMessage(chatId, "✅ Игрок " + playerName + " не замучен.");
             return;
         }
 
@@ -505,13 +505,13 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         String expiry = punishmentManager.getMuteExpiry(playerName);
         PunishmentManager.HistoryEntry entry = punishmentManager.getLastMute(playerName);
 
-        String response = "§e[ИНФОРМАЦИЯ О МУТЕ]\n" +
-                "§fИгрок: §e" + playerName + "\n" +
-                "§fПричина: §7" + reason + "\n" +
-                "§fВыдал: §9" + issuer + "\n" +
-                "§fДата: §7" + punishmentManager.getFormattedDateTime(entry.timestamp) + "\n" +
-                "§fИстекает: §7" + expiry + "\n" +
-                "§fНавсегда: §7" + (entry.duration.equals("навсегда") ? "§aДа" : "§cНет");
+        String response = "📋 ИНФОРМАЦИЯ О МУТЕ:\n";
+        response += "👤 Игрок: " + playerName + "\n";
+        response += "📝 Причина: " + reason + "\n";
+        response += "👤 Выдал: " + issuer + "\n";
+        response += "📅 Дата: " + punishmentManager.getFormattedDateTime(entry.timestamp) + "\n";
+        response += "⏱ Истекает: " + expiry + "\n";
+        response += "♾ Навсегда: " + (entry.duration.equals("навсегда") ? "Да" : "Нет");
 
         sendMessage(chatId, response);
     }
@@ -550,7 +550,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         String format = "§6[Объявление] §f" + message + " §7(Пишет: " + sender + "§7)";
         Bukkit.broadcastMessage(format);
-        sendMessage(chatId, format.replaceAll("§[0-9a-fk-or]", ""));
+        sendMessage(chatId, "[БОТ] " + format.replaceAll("§[0-9a-fk-or]", ""));
     }
 
     // ============================================
@@ -568,12 +568,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         int totalPages = (int) Math.ceil((double) allBans.size() / pageSize);
 
         if (bans.isEmpty()) {
-            sendMessage(chatId, "§cСписок банов пуст.");
+            sendMessage(chatId, "📋 Список банов пуст.");
         } else {
             StringBuilder response = new StringBuilder();
-            response.append("§c=== СПИСОК БАНОВ === (Стр. ").append(page).append("/").append(totalPages).append(")");
+            response.append("📋 СПИСОК БАНОВ (Страница ").append(page).append("/").append(totalPages).append(")");
             for (String ban : bans) {
-                response.append("\n§7• ").append(ban);
+                response.append("\n\n").append(ban);
             }
             if (totalPages > 1) {
                 response.append("\n\n📌 Используй: !rcon global banlist ").append(page + 1);
@@ -597,12 +597,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         int totalPages = (int) Math.ceil((double) allMutes.size() / pageSize);
 
         if (mutes.isEmpty()) {
-            sendMessage(chatId, "§eСписок мутов пуст.");
+            sendMessage(chatId, "📋 Список мутов пуст.");
         } else {
             StringBuilder response = new StringBuilder();
-            response.append("§e=== СПИСОК МУТОВ === (Стр. ").append(page).append("/").append(totalPages).append(")");
+            response.append("📋 СПИСОК МУТОВ (Страница ").append(page).append("/").append(totalPages).append(")");
             for (String mute : mutes) {
-                response.append("\n§7• ").append(mute);
+                response.append("\n\n").append(mute);
             }
             if (totalPages > 1) {
                 response.append("\n\n📌 Используй: !rcon global mutelist ").append(page + 1);
@@ -624,12 +624,12 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         List<PunishmentManager.HistoryEntry> history = punishmentManager.getHistory(target);
         if (history.isEmpty()) {
-            sendMessage(chatId, "§7История наказаний для §f" + target + " §7пуста.");
+            sendMessage(chatId, "📋 История наказаний для " + target + " пуста.");
             return;
         }
 
         StringBuilder response = new StringBuilder();
-        response.append("§6=== ИСТОРИЯ НАКАЗАНИЙ §f").append(target).append(" §6(§f").append(history.size()).append("§6) ===");
+        response.append("📋 ИСТОРИЯ НАКАЗАНИЙ ").append(target).append(" (Записей: ").append(history.size()).append(")");
 
         SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
         int count = 0;
@@ -640,16 +640,14 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             }
             String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
             String status = entry.type.equals("ban") ?
-                (punishmentManager.isBanned(target) ? "§a[Активен]" : "§c[Истек]") :
-                (punishmentManager.isMuted(target) ? "§a[Активен]" : "§c[Истек]");
+                (punishmentManager.isBanned(target) ? "[Активен]" : "[Истек]") :
+                (punishmentManager.isMuted(target) ? "[Активен]" : "[Истек]");
             String actionName = entry.getActionName();
 
-            String color = entry.type.equals("ban") ? "§c" : entry.type.equals("mute") ? "§e" : "§a";
-            
-            response.append("\n\n§7- ").append(timeAgo).append(" §7-");
-            response.append("\n  ").append(color).append(target).append(" §7был ").append(color).append(actionName)
-                    .append(" §7на §f").append(entry.duration).append(" §7от §f")
-                    .append(entry.issuer).append("§7: ").append(entry.hidden ? "§c[СКРЫТО] " : "").append("§f").append(entry.reason).append(" ").append(status);
+            response.append("\n\n - ").append(timeAgo).append(" -");
+            response.append("\n   ").append(target).append(" был ").append(actionName)
+                    .append(" на ").append(entry.duration).append(" ")
+                    .append(entry.issuer).append(": ").append(entry.reason).append(" ").append(status);
             count++;
         }
         sendMessage(chatId, response.toString());
@@ -680,7 +678,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         boolean state = parts[1].equalsIgnoreCase("on");
         plugin.getConfig().set("maintenance", state);
         plugin.saveConfig();
-        sendMessage(chatId, "§6[ТЕХРАБОТЫ] §fТехработы " + (state ? "§aВКЛЮЧЕНЫ" : "§cВЫКЛЮЧЕНЫ"));
+        sendMessage(chatId, "[БОТ] Техработы " + (state ? "ВКЛЮЧЕНЫ" : "ВЫКЛЮЧЕНЫ"));
     }
 
     // ============================================
@@ -698,7 +696,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         try {
             SendMessage temp = new SendMessage();
             temp.setChatId(String.valueOf(chatId));
-            temp.setText("⏳ Выполняю команду на сервере...");
+            temp.setText("[БОТ] ⏳ Выполняю команду на сервере...");
             var sent = execute(temp);
             tempMsgId[0] = sent.getMessageId();
         } catch (Exception e) {}
@@ -710,7 +708,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
             if (finalTempMsgId != 0) {
                 deleteMessage(String.valueOf(finalChatId), finalTempMsgId);
             }
-            sendMessage(finalChatId, response);
+            sendMessage(finalChatId, "[БОТ] " + response);
         });
     }
 
@@ -755,7 +753,7 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
-        msg.setText("⚠️ " + message);
+        msg.setText("[БОТ] ⚠️ " + message);
         msg.setReplyMarkup(markup);
 
         try { execute(msg); } catch (TelegramApiException e) { e.printStackTrace(); }
@@ -769,32 +767,21 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         List<String> availableCmds = groupManager.getAvailableCommands(userId);
 
         StringBuilder response = new StringBuilder();
-        response.append("§6=== ПОМОЩЬ ПО КОМАНДАМ ===\n\n");
-        response.append("§7Использование: §f!rcon global <команда>\n\n");
-        response.append("§7Доступные команды:\n");
+        response.append("[БОТ] Использование команды - !rcon [сервер] [команда]\n\n");
+        response.append("Доступные сервера и команды:\n");
+        response.append(" -global (");
 
         if (availableCmds.isEmpty()) {
-            response.append("§cНет доступа");
+            response.append("нет доступа");
         } else {
-            for (String cmd : availableCmds) {
-                response.append("§7• §f").append(cmd).append("\n");
-            }
+            response.append(String.join(", ", availableCmds));
         }
+        response.append(")\n");
 
         if (group != null && (group.equals("admin") || group.equals("owner") || group.equals("leader"))) {
-            response.append("\n§7Дополнительные команды:\n");
-            response.append("§7• §fban §7<ник> <время> <причина>\n");
-            response.append("§7• §fmute §7<ник> <время> <причина>\n");
-            response.append("§7• §fkick §7<ник> <причина>\n");
-            response.append("§7• §funban §7<ник>\n");
-            response.append("§7• §funmute §7<ник>\n");
-            response.append("§7• §fbc §7<сообщение>\n");
-            response.append("§7• §fcheckban §7<ник>\n");
-            response.append("§7• §fcheckmute §7<ник>\n");
-            response.append("§7• §fshist §7<ник>\n");
-            response.append("§7• §fbanlist\n");
-            response.append("§7• §fmutelist\n");
-            response.append("§7• §ftex §7on/off\n");
+            response.append(" - core (нет доступа)\n");
+            response.append(" - bw (history, dupeip, unmute, shist, unban, checkban, mute, shistory, checkmute, warn, checkwarn, banip, banlist, unwarn, hist, staffhist, staffhistory, ban, alts, kick, checkalts, iphist)\n");
+            response.append(" - grief (нет доступа)");
         }
 
         sendMessage(chatId, response.toString());
@@ -839,11 +826,10 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
                 for (PunishmentManager.HistoryEntry entry : history) {
                     String timeAgo = punishmentManager.getTimeAgo(entry.timestamp);
                     String status = entry.type.equals("ban") ?
-                        (punishmentManager.isBanned(playerName) ? "§a[Активен]" : "§c[Истек]") :
-                        (punishmentManager.isMuted(playerName) ? "§a[Активен]" : "§c[Истек]");
-                    String color = entry.type.equals("ban") ? "§c" : entry.type.equals("mute") ? "§e" : "§a";
-                    items.add("§7- " + timeAgo + " §7-\n  " + color + playerName + " §7был " + color + entry.getActionName() +
-                            " §7на §f" + entry.duration + " §7от §f" + entry.issuer + "§7: " + (entry.hidden ? "§c[СКРЫТО] " : "") + "§f" + entry.reason + " " + status);
+                        (punishmentManager.isBanned(playerName) ? "[Активен]" : "[Истек]") :
+                        (punishmentManager.isMuted(playerName) ? "[Активен]" : "[Истек]");
+                    items.add("- " + timeAgo + " -\n   " + playerName + " был " + entry.getActionName() +
+                            " на " + entry.duration + " " + entry.issuer + ": " + entry.reason + " " + status);
                 }
                 break;
             default: return;
@@ -858,15 +844,15 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         List<String> pageItems = items.subList(start, end);
 
         StringBuilder response = new StringBuilder();
-        String title = type.equals("banlist") ? "§c=== СПИСОК БАНОВ ===" :
-                       type.equals("mutelist") ? "§e=== СПИСОК МУТОВ ===" :
-                       "§6=== ИСТОРИЯ НАКАЗАНИЙ ДЛЯ §f" + playerName + " §6===";
-        response.append(title).append(" (§f").append(page).append("§7/§f").append(totalPages).append("§7)");
+        String title = type.equals("banlist") ? "Список банов" :
+                       type.equals("mutelist") ? "Список мутов" :
+                       "История наказаний для " + playerName;
+        response.append("[БОТ] ").append(title).append(" (Страница ").append(page).append("/").append(totalPages).append(")");
 
         for (String item : pageItems) {
             response.append("\n\n").append(item);
         }
-        response.append("\n\n§7📊 Всего записей: §f").append(items.size());
+        response.append("\n\n📊 Всего записей: ").append(items.size());
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -927,44 +913,41 @@ public class TelegramBotHandler extends TelegramLongPollingBot {
         int max = Bukkit.getMaxPlayers();
         StringBuilder players = new StringBuilder();
         for (Player p : Bukkit.getOnlinePlayers()) {
-            players.append("§7• §f").append(p.getName()).append("\n");
+            players.append("• ").append(p.getName()).append("\n");
         }
-        sendMessage(chatId, "§6=== ОНЛАЙН ===\n§f" + online + "§7/§f" + max + "\n\n" + players.toString());
+        sendMessage(chatId, "[БОТ] Онлайн: " + online + "/" + max + "\n\n" + players);
     }
 
     private void sendTps(long chatId) {
         double tps = Bukkit.getTPS()[0];
-        String status = tps >= 20 ? "§aОтлично" : tps >= 18 ? "§eХорошо" : tps >= 15 ? "§6Средне" : "§cПлохо";
-        sendMessage(chatId, "§6=== TPS ===\n§f" + String.format("%.2f", tps) + "\n§7Статус: " + status);
+        String status = tps >= 20 ? "Отлично" : tps >= 18 ? "Хорошо" : tps >= 15 ? "Средне" : "Плохо";
+        sendMessage(chatId, "[БОТ] TPS: " + String.format("%.2f", tps) + "\nСтатус: " + status);
     }
 
     private void sendInfo(long chatId) {
-        sendMessage(chatId, "§6=== ИНФОРМАЦИЯ О СЕРВЕРЕ ===\n" +
-                "§7Версия: §f" + Bukkit.getVersion() + "\n" +
-                "§7Игроки: §f" + Bukkit.getOnlinePlayers().size() + "§7/§f" + Bukkit.getMaxPlayers());
+        sendMessage(chatId, "[БОТ] Информация о сервере\nВерсия: " + Bukkit.getVersion() +
+                "\nИгроки: " + Bukkit.getOnlinePlayers().size() + "/" + Bukkit.getMaxPlayers());
     }
 
     private void sendWelcome(long chatId) {
-        sendMessage(chatId, "§6=== ДОБРО ПОЖАЛОВАТЬ! ===\n" +
-                "§7Используй §f!help §7для списка команд\n" +
-                "§7Используй §f!rcon global <команда> §7для управления сервером");
+        sendMessage(chatId, "[БОТ] Добро пожаловать!\nИспользуй !help для списка команд");
     }
 
     private void sendMe(long chatId, long userId) {
         String group = groupManager.getUserGroup(userId);
         String groupName = group != null ? group : "Нет группы";
-        String isAdmin = plugin.isAdmin(userId) ? "§aДа" : "§cНет";
+        String isAdmin = plugin.isAdmin(userId) ? "Да" : "Нет";
         boolean isBanned = botBanManager.isBanned(userId);
 
-        String response = "§6=== ИНФОРМАЦИЯ О ВАС ===\n" +
-                "§7ID: §f" + userId + "\n" +
-                "§7Группа: §f" + groupName + "\n" +
-                "§7Админ: " + isAdmin + "\n" +
-                "§7Бан в боте: " + (isBanned ? "§cДа" : "§aНет");
+        String response = "[БОТ] Информация о вас\n" +
+                "ID: " + userId + "\n" +
+                "Группа: " + groupName + "\n" +
+                "Админ: " + isAdmin + "\n" +
+                "Бан в боте: " + (isBanned ? "Да" : "Нет");
 
         if (isBanned) {
             BotBanManager.BanData ban = botBanManager.getBanData(userId);
-            response += "\n§7Причина: §f" + ban.reason;
+            response += "\nПричина: " + ban.reason;
         }
         sendMessage(chatId, response);
     }
