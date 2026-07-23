@@ -82,12 +82,10 @@ public class PunishmentManager {
             String playerName = entry.getKey();
             List<HistoryEntry> list = entry.getValue();
 
-            // Идём с конца, чтобы взять последнее наказание
             for (int i = list.size() - 1; i >= 0; i--) {
                 HistoryEntry he = list.get(i);
 
                 if (he.type.equals("ban")) {
-                    // Проверяем, не было ли разбана после этого бана
                     boolean wasUnbanned = false;
                     for (int j = i + 1; j < list.size(); j++) {
                         if (list.get(j).type.equals("unban")) {
@@ -103,11 +101,10 @@ public class PunishmentManager {
                             banReasons.put(playerName, he.reason);
                         }
                     }
-                    break; // берём только последний бан
+                    break;
                 }
 
                 if (he.type.equals("mute")) {
-                    // Проверяем, не было ли размута после этого мута
                     boolean wasUnmuted = false;
                     for (int j = i + 1; j < list.size(); j++) {
                         if (list.get(j).type.equals("unmute")) {
@@ -123,7 +120,7 @@ public class PunishmentManager {
                             muteReasons.put(playerName, he.reason);
                         }
                     }
-                    break; // берём только последний мут
+                    break;
                 }
             }
         }
@@ -152,7 +149,6 @@ public class PunishmentManager {
                 plugin.getLogger().info("✅ Автоснятие бана: " + playerName);
                 Bukkit.broadcastMessage("§aИгрок " + playerName + " был автоматически разбанен (срок истек)");
 
-                // Добавляем запись об автоснятии
                 HistoryEntry autoEntry = new HistoryEntry();
                 autoEntry.type = "unban";
                 autoEntry.player = playerName;
@@ -174,7 +170,6 @@ public class PunishmentManager {
                 muteReasons.remove(playerName);
                 plugin.getLogger().info("✅ Автоснятие мута: " + playerName);
 
-                // Добавляем запись об автоснятии
                 HistoryEntry autoEntry = new HistoryEntry();
                 autoEntry.type = "unmute";
                 autoEntry.player = playerName;
@@ -259,10 +254,14 @@ public class PunishmentManager {
             }
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
 
+            // ============================================
+            // ==== КИК С КРАСИВЫМ СООБЩЕНИЕМ =====
+            // ============================================
             Player player = Bukkit.getPlayer(finalPlayerName);
             if (player != null && player.isOnline()) {
                 String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
                 String kickMessage = "§c§lВаш аккаунт заблокирован!\n" +
+                        "\n" +
                         "§fПричина: §c" + finalReason + "\n" +
                         "§fСервер: §cглобальный\n" +
                         "§fВыдал: §9" + finalIssuer + "\n" +
@@ -297,7 +296,6 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            // Добавляем запись о разбане в историю
             HistoryEntry entry = new HistoryEntry();
             entry.type = "unban";
             entry.player = finalPlayerName;
@@ -397,7 +395,6 @@ public class PunishmentManager {
         final String finalReason = reason;
 
         Bukkit.getScheduler().runTask(plugin, () -> {
-            // Добавляем запись о размуте в историю
             HistoryEntry entry = new HistoryEntry();
             entry.type = "unmute";
             entry.player = finalPlayerName;
@@ -635,6 +632,7 @@ public class PunishmentManager {
         String expiryStr = expiry == -1 ? "навсегда" : formatTimeLeft(expiry);
 
         return "§c§lВаш аккаунт заблокирован!\n" +
+                "\n" +
                 "§fПричина: §c" + reason + "\n" +
                 "§fСервер: §cглобальный\n" +
                 "§fВыдал: §9" + issuer + "\n" +
