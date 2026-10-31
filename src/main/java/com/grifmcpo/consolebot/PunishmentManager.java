@@ -425,9 +425,9 @@ public class PunishmentManager implements Listener {
             }
 
             if (finalBroadcast && !finalHidden) {
-                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration) + " §f";
+                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration);
                 String msg = "§4❨！❩ §fИгрок §9" + finalIssuer + " §fзабанил §c" + finalPlayerName +
-                        timeStr + "§fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
+                        timeStr + " §fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
                 Bukkit.broadcastMessage(colorize(msg));
             }
 
@@ -540,9 +540,9 @@ public class PunishmentManager implements Listener {
             }
 
             if (finalBroadcast && !finalHidden) {
-                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration) + " §f";
+                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration);
                 String msg = "§4❨！❩ §fИгрок §9" + finalIssuer + " §fзамутил §c" + finalPlayerName +
-                        timeStr + "§fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
+                        timeStr + " §fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
                 Bukkit.broadcastMessage(colorize(msg));
             }
 
@@ -748,9 +748,9 @@ public class PunishmentManager implements Listener {
             }
 
             if (!finalHidden) {
-                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration) + " §f";
+                String timeStr = finalDuration.equals("навсегда") ? "" : " §fна §b" + formatDuration(finalDuration);
                 String msg = "§4❨！❩ §fИгрок §9" + finalIssuer + " §fзабанил IP §c" + finalPlayerName +
-                        timeStr + "§fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
+                        timeStr + " §fпо причине: §7" + getReason(finalReason) + " §8(глобальный)";
                 Bukkit.broadcastMessage(colorize(msg));
             }
 
