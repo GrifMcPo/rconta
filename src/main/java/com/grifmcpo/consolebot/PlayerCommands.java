@@ -7,11 +7,15 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class PlayerCommands implements CommandExecutor {
+
+    private static final Map<String, Integer> GROUP_PRIORITY = createGroupPriority();
+    private static final Map<String, Long> MAX_BAN_TIME = createMaxBanTime();
+    private static final Map<String, Long> MAX_MUTE_TIME = createMaxMuteTime();
+    private static final Map<String, Long> MAX_KICK_TIME = createMaxKickTime();
 
     private final TelegramConsoleBot plugin;
     private final PunishmentManager punishmentManager;
@@ -24,6 +28,88 @@ public class PlayerCommands implements CommandExecutor {
         this.punishmentManager = punishmentManager;
         this.playerManager = playerManager;
         this.commandLogger = commandLogger;
+    }
+
+    private static Map<String, Integer> createGroupPriority() {
+        Map<String, Integer> map = new HashMap<>();
+        map.put("default", 0);
+        map.put("premium", 1);
+        map.put("creativ", 2);
+        map.put("moder", 3);
+        map.put("admin", 4);
+        map.put("lord", 5);
+        map.put("admin+", 6);
+        map.put("creator", 7);
+        map.put("founder", 8);
+        map.put("owner", 9);
+        map.put("console", 10);
+        map.put("caesar", 11);
+        map.put("server", 12);
+        map.put("helper", 13);
+        map.put("hype", 14);
+        map.put("staff", 15);
+        map.put("leader", 16);
+        map.put("sponsor", 17);
+        return map;
+    }
+
+    private static Map<String, Long> createMaxBanTime() {
+        Map<String, Long> map = new HashMap<>();
+        map.put("moder", parseDurationToMillis("10m"));
+        map.put("admin", parseDurationToMillis("20m"));
+        map.put("lord", parseDurationToMillis("30m"));
+        map.put("admin+", parseDurationToMillis("30m"));
+        map.put("creator", parseDurationToMillis("40m"));
+        map.put("founder", parseDurationToMillis("1h"));
+        map.put("owner", parseDurationToMillis("1h"));
+        map.put("console", parseDurationToMillis("2h"));
+        map.put("caesar", parseDurationToMillis("12h"));
+        map.put("server", parseDurationToMillis("1d"));
+        map.put("helper", parseDurationToMillis("7d"));
+        map.put("hype", Long.MAX_VALUE);
+        map.put("staff", Long.MAX_VALUE);
+        map.put("leader", Long.MAX_VALUE);
+        map.put("sponsor", Long.MAX_VALUE);
+        return map;
+    }
+
+    private static Map<String, Long> createMaxMuteTime() {
+        Map<String, Long> map = new HashMap<>();
+        map.put("admin", parseDurationToMillis("20m"));
+        map.put("lord", parseDurationToMillis("30m"));
+        map.put("admin+", parseDurationToMillis("30m"));
+        map.put("creator", parseDurationToMillis("40m"));
+        map.put("founder", parseDurationToMillis("1h"));
+        map.put("owner", parseDurationToMillis("1h"));
+        map.put("console", parseDurationToMillis("2h"));
+        map.put("caesar", parseDurationToMillis("12h"));
+        map.put("server", parseDurationToMillis("1d"));
+        map.put("helper", parseDurationToMillis("7d"));
+        map.put("hype", Long.MAX_VALUE);
+        map.put("staff", Long.MAX_VALUE);
+        map.put("leader", Long.MAX_VALUE);
+        map.put("sponsor", Long.MAX_VALUE);
+        return map;
+    }
+
+    private static Map<String, Long> createMaxKickTime() {
+        Map<String, Long> map = new HashMap<>();
+        map.put("moder", 0L);
+        map.put("admin", 0L);
+        map.put("lord", parseDurationToMillis("30m"));
+        map.put("admin+", parseDurationToMillis("30m"));
+        map.put("creator", parseDurationToMillis("40m"));
+        map.put("founder", parseDurationToMillis("1h"));
+        map.put("owner", parseDurationToMillis("1h"));
+        map.put("console", parseDurationToMillis("2h"));
+        map.put("caesar", parseDurationToMillis("12h"));
+        map.put("server", parseDurationToMillis("1d"));
+        map.put("helper", parseDurationToMillis("7d"));
+        map.put("hype", Long.MAX_VALUE);
+        map.put("staff", Long.MAX_VALUE);
+        map.put("leader", Long.MAX_VALUE);
+        map.put("sponsor", Long.MAX_VALUE);
+        return map;
     }
 
     @Override
@@ -56,6 +142,202 @@ public class PlayerCommands implements CommandExecutor {
             default:
                 return false;
         }
+    }
+
+    private Permission getPermissionProvider() {
+        try {
+            var reg = Bukkit.getServicesManager().getRegistration(Permission.class);
+            return reg == null ? null : reg.getProvider();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String normalizeGroup(String group) {
+        if (group == null || group.trim().isEmpty()) {
+            return "default";
+        }
+        return group.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String getSenderGroup(CommandSender sender) {
+        if (sender instanceof Player player) {
+            Permission permission = getPermissionProvider();
+            if (permission != null) {
+                return normalizeGroup(permission.getPrimaryGroup(player));
+            }
+        }
+        return "console";
+    }
+
+    private String getTargetGroup(String playerName) {
+        Player player = Bukkit.getPlayerExact(playerName);
+        if (player == null) {
+            return "default";
+        }
+        Permission permission = getPermissionProvider();
+        if (permission == null) {
+            return "default";
+        }
+        return normalizeGroup(permission.getPrimaryGroup(player));
+    }
+
+    private int getGroupPriority(String group) {
+        String normalized = normalizeGroup(group);
+        Integer priority = GROUP_PRIORITY.get(normalized);
+        return priority == null ? -1 : priority;
+    }
+
+    private boolean canUseAction(CommandSender sender, String action) {
+        String group = getSenderGroup(sender);
+        int priority = getGroupPriority(group);
+        if (priority < 0) {
+            return true;
+        }
+
+        switch (action.toLowerCase(Locale.ROOT)) {
+            case "ban":
+                return priority >= getGroupPriority("moder");
+            case "mute":
+                return priority >= getGroupPriority("admin") || priority >= getGroupPriority("moder");
+            case "kick":
+                return priority >= getGroupPriority("lord");
+            case "warn":
+                return priority >= getGroupPriority("helper");
+            case "ipban":
+                return priority >= getGroupPriority("helper");
+            default:
+                return true;
+        }
+    }
+
+    private boolean canUseHiddenFlag(CommandSender sender) {
+        return getGroupPriority(getSenderGroup(sender)) >= getGroupPriority("staff");
+    }
+
+    private boolean canPunishTarget(CommandSender sender, String playerName, String action) {
+        String senderGroup = getSenderGroup(sender);
+        String targetGroup = getTargetGroup(playerName);
+        int senderPriority = getGroupPriority(senderGroup);
+        int targetPriority = getGroupPriority(targetGroup);
+
+        if (senderPriority >= 0 && targetPriority >= 0 && targetPriority > senderPriority) {
+            sender.sendMessage("§c§lИгрок выше вас донатом!");
+            return false;
+        }
+
+        if (!canUseAction(sender, action)) {
+            sender.sendMessage("§c§lУ вас нет прав на эту команду!");
+            return false;
+        }
+
+        return true;
+    }
+
+    private String clampDurationByGroup(CommandSender sender, String action, String duration) {
+        if (duration == null || duration.isEmpty() || duration.equalsIgnoreCase("навсегда")) {
+            return "навсегда";
+        }
+        if (!punishmentManager.isValidTime(duration)) {
+            return duration;
+        }
+
+        String group = getSenderGroup(sender);
+        long maxMillis = getMaxDurationForGroup(group, action);
+        if (maxMillis <= 0) {
+            return duration;
+        }
+
+        long parsed = parseDurationToMillis(duration);
+        if (parsed > maxMillis) {
+            return millisToDuration(maxMillis);
+        }
+        return duration;
+    }
+
+    private long getMaxDurationForGroup(String group, String action) {
+        String normalizedGroup = normalizeGroup(group);
+        switch (action.toLowerCase(Locale.ROOT)) {
+            case "ban":
+                return MAX_BAN_TIME.getOrDefault(normalizedGroup, 0L);
+            case "mute":
+                return MAX_MUTE_TIME.getOrDefault(normalizedGroup, 0L);
+            case "kick":
+                return MAX_KICK_TIME.getOrDefault(normalizedGroup, 0L);
+            default:
+                return 0L;
+        }
+    }
+
+    private static String millisToDuration(long millis) {
+        if (millis == Long.MAX_VALUE) {
+            return "навсегда";
+        }
+        long seconds = millis / 1000;
+        if (seconds < 60) {
+            return seconds + "s";
+        }
+        long minutes = seconds / 60;
+        if (minutes < 60) {
+            return minutes + "m";
+        }
+        long hours = minutes / 60;
+        if (hours < 24) {
+            return hours + "h";
+        }
+        long days = hours / 24;
+        if (days < 7) {
+            return days + "d";
+        }
+        return "7d";
+    }
+
+    private static long parseDurationToMillis(String time) {
+        if (time == null || time.equalsIgnoreCase("навсегда")) {
+            return Long.MAX_VALUE;
+        }
+        String trimmed = time.trim();
+        if (trimmed.isEmpty()) {
+            return Long.MAX_VALUE;
+        }
+        char unit = Character.toLowerCase(trimmed.charAt(trimmed.length() - 1));
+        long value;
+        try {
+            value = Long.parseLong(trimmed.substring(0, trimmed.length() - 1));
+        } catch (NumberFormatException e) {
+            return Long.MAX_VALUE;
+        }
+
+        switch (unit) {
+            case 's':
+                return value * 1000L;
+            case 'm':
+                return value * 60L * 1000L;
+            case 'h':
+                return value * 60L * 60L * 1000L;
+            case 'd':
+                return value * 24L * 60L * 60L * 1000L;
+            case 'w':
+                return value * 7L * 24L * 60L * 60L * 1000L;
+            case 'y':
+                return value * 365L * 24L * 60L * 60L * 1000L;
+            default:
+                return Long.MAX_VALUE;
+        }
+    }
+
+    private boolean shouldAppendHiddenFlag(CommandSender sender, boolean hidden) {
+        if (!hidden) {
+            return false;
+        }
+        if (canUseHiddenFlag(sender)) {
+            return true;
+        }
+        return false;
+    }
+
+    private String safeReason(String baseReason) {
+        return baseReason == null || baseReason.trim().isEmpty() ? "Без причины" : baseReason;
     }
 
     private boolean handleBan(CommandSender sender, String[] args) {
@@ -92,11 +374,23 @@ public class PlayerCommands implements CommandExecutor {
             reason = "Без причины";
         }
 
+        if (!canPunishTarget(sender, playerName, "ban")) {
+            return true;
+        }
+
+        duration = clampDurationByGroup(sender, "ban", duration);
+
+        if (hidden && !canUseHiddenFlag(sender)) {
+            reason = reason + " -s";
+            hidden = false;
+            sender.sendMessage("§c§l-s доступен только для staff и выше! Флаг добавлен в причину.");
+        }
+
         String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         boolean success = punishmentManager.banPlayer(playerName, issuer, reason, duration, hidden, !hidden);
         if (success) {
-            sender.sendMessage("§aИгрок " + playerName + " забанен " + (duration.equals("навсегда") ? "навсегда" : "на " + duration) + " по причине: " + reason);
+            sender.sendMessage("§c§lВы успешно забанили игрока!");
             commandLogger.logCommand(sender.getName(), "ban " + playerName + " " + duration + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§c" + playerName + " уже забанен!");
@@ -145,11 +439,24 @@ public class PlayerCommands implements CommandExecutor {
             reason = "Без причины";
         }
 
+        String playerName = uuidStr;
+        if (!canPunishTarget(sender, playerName, "ban")) {
+            return true;
+        }
+
+        duration = clampDurationByGroup(sender, "ban", duration);
+
+        if (hidden && !canUseHiddenFlag(sender)) {
+            reason = reason + " -s";
+            hidden = false;
+            sender.sendMessage("§c§l-s доступен только для staff и выше! Флаг добавлен в причину.");
+        }
+
         String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         boolean success = punishmentManager.banUuid(uuidStr, issuer, reason, duration, hidden, !hidden);
         if (success) {
-            sender.sendMessage("§aИгрок с UUID " + uuidStr + " забанен " + (duration.equals("навсегда") ? "навсегда" : "на " + duration) + " по причине: " + reason);
+            sender.sendMessage("§c§lВы успешно забанили игрока!");
             commandLogger.logCommand(sender.getName(), "banuuid " + uuidStr + " " + duration + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§cИгрок с UUID " + uuidStr + " уже забанен или не найден!");
@@ -191,11 +498,23 @@ public class PlayerCommands implements CommandExecutor {
             reason = "Без причины";
         }
 
+        if (!canPunishTarget(sender, playerName, "mute")) {
+            return true;
+        }
+
+        duration = clampDurationByGroup(sender, "mute", duration);
+
+        if (hidden && !canUseHiddenFlag(sender)) {
+            reason = reason + " -s";
+            hidden = false;
+            sender.sendMessage("§c§l-s доступен только для staff и выше! Флаг добавлен в причину.");
+        }
+
         String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         boolean success = punishmentManager.mutePlayer(playerName, issuer, reason, duration, hidden, !hidden);
         if (success) {
-            sender.sendMessage("§aИгрок " + playerName + " замучен " + (duration.equals("навсегда") ? "навсегда" : "на " + duration) + " по причине: " + reason);
+            sender.sendMessage("§c§lВы успешно замутили игрока!");
             commandLogger.logCommand(sender.getName(), "mute " + playerName + " " + duration + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§c" + playerName + " уже замучен!");
@@ -223,11 +542,22 @@ public class PlayerCommands implements CommandExecutor {
 
         String playerName = args[0];
         String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+
+        if (!canPunishTarget(sender, playerName, "kick")) {
+            return true;
+        }
+
+        if (hidden && !canUseHiddenFlag(sender)) {
+            reason = reason + " -s";
+            hidden = false;
+            sender.sendMessage("§c§l-s доступен только для staff и выше! Флаг добавлен в причину.");
+        }
+
         String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         boolean success = punishmentManager.kickPlayer(playerName, issuer, reason, hidden, !hidden);
         if (success) {
-            sender.sendMessage("§aИгрок " + playerName + " кикнут по причине: " + reason);
+            sender.sendMessage("§c§lВы успешно кикнули игрока!");
             commandLogger.logCommand(sender.getName(), "kick " + playerName + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§c" + playerName + " не найден!");
@@ -255,11 +585,22 @@ public class PlayerCommands implements CommandExecutor {
 
         String playerName = args[0];
         String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+
+        if (!canPunishTarget(sender, playerName, "warn")) {
+            return true;
+        }
+
+        if (hidden && !canUseHiddenFlag(sender)) {
+            reason = reason + " -s";
+            hidden = false;
+            sender.sendMessage("§c§l-s доступен только для staff и выше! Флаг добавлен в причину.");
+        }
+
         String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         boolean success = punishmentManager.warnPlayer(playerName, issuer, reason, hidden, !hidden);
         if (success) {
-            sender.sendMessage("§aИгрок " + playerName + " получил предупреждение по причине: " + reason);
+            sender.sendMessage("§c§lВы успешно выдали предупреждение игроку!");
             commandLogger.logCommand(sender.getName(), "warn " + playerName + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§cНе удалось выдать предупреждение!");
@@ -326,7 +667,10 @@ public class PlayerCommands implements CommandExecutor {
         String playerName = args[0];
         int limit = 10;
         if (args.length >= 2) {
-            try { limit = Integer.parseInt(args[1]); } catch (NumberFormatException e) {}
+            try {
+                limit = Integer.parseInt(args[1]);
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         String response = commandLogger.getFormattedLogs(playerName, limit);
@@ -372,9 +716,6 @@ public class PlayerCommands implements CommandExecutor {
         return true;
     }
 
-    // =========================================================
-    // ==== SEEN =====
-    // =========================================================
     private boolean handleSeen(CommandSender sender, String[] args) {
         if (!sender.hasPermission("telegramconsolebot.seen")) {
             sender.sendMessage("§cУ вас нет прав на использование этой команды!");
@@ -390,7 +731,6 @@ public class PlayerCommands implements CommandExecutor {
         Player target = Bukkit.getPlayer(playerName);
         boolean isOnline = target != null && target.isOnline();
 
-        // Проверка прав по группам через Vault
         if (sender instanceof Player) {
             Player senderPlayer = (Player) sender;
             try {
@@ -398,25 +738,24 @@ public class PlayerCommands implements CommandExecutor {
                 if (permission != null) {
                     String senderGroup = permission.getPrimaryGroup(senderPlayer);
                     String targetGroup = null;
-                    
+
                     if (isOnline) {
                         targetGroup = permission.getPrimaryGroup(target);
                     } else {
                         targetGroup = "default";
                     }
-                    
+
                     if (senderGroup != null && targetGroup != null) {
-                        int senderWeight = getGroupWeight(senderGroup);
-                        int targetWeight = getGroupWeight(targetGroup);
-                        
+                        int senderWeight = getGroupPriority(senderGroup);
+                        int targetWeight = getGroupPriority(targetGroup);
+
                         if (senderWeight < targetWeight) {
                             sender.sendMessage("§cВы не можете узнать информацию об этом игроке!");
                             return true;
                         }
                     }
                 }
-            } catch (Exception e) {
-                // Если ошибка - пропускаем проверку
+            } catch (Exception ignored) {
             }
         }
 
@@ -426,22 +765,6 @@ public class PlayerCommands implements CommandExecutor {
         return true;
     }
 
-    private int getGroupWeight(String groupName) {
-        Map<String, Integer> weights = new HashMap<>();
-        weights.put("owner", 100);
-        weights.put("admin", 80);
-        weights.put("mod", 60);
-        weights.put("moderator", 60);
-        weights.put("helper", 40);
-        weights.put("builder", 30);
-        weights.put("default", 0);
-        weights.put("member", 0);
-        return weights.getOrDefault(groupName.toLowerCase(), 0);
-    }
-
-    // =========================================================
-    // ==== PEX =====
-    // =========================================================
     private boolean handlePex(CommandSender sender, String[] args) {
         if (!sender.hasPermission("telegramconsolebot.pex")) {
             sender.sendMessage("§cУ вас нет прав на использование этой команды!");
@@ -524,17 +847,17 @@ public class PlayerCommands implements CommandExecutor {
             StringBuilder response = new StringBuilder();
             response.append("§6Доступные группы:\n");
             response.append("§7━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-            
+
             for (String group : sortedGroups) {
                 int count = groupCounts.getOrDefault(group, 0);
                 response.append("§f - ").append(group).append(" §7(").append(count).append(" игроков)\n");
             }
-            
+
             response.append("§7━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
             response.append("§7Всего групп: §f").append(sortedGroups.size());
 
             sender.sendMessage(response.toString());
-            
+
         } catch (Exception e) {
             sender.sendMessage("§cОшибка: " + e.getMessage());
         }
