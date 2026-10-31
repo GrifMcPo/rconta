@@ -19,6 +19,18 @@ commands:
     description: Mute a player
     permission: telegramconsolebot.mute
     usage: /mute <player> [time] <reason> [-s]
+  unmute:
+    description: Unmute a player
+    permission: telegramconsolebot.unmute
+    usage: /unmute <player> <reason>
+  unban:
+    description: Unban a player
+    permission: telegramconsolebot.unban
+    usage: /unban <player> <reason>
+  unbanip:
+    description: Unban a player by IP
+    permission: telegramconsolebot.unbanip
+    usage: /unbanip <player> <reason>
   kick:
     description: Kick a player
     permission: telegramconsolebot.kick
@@ -29,7 +41,7 @@ commands:
     usage: /warn <player> <reason> [-s]
   unwarn:
     description: Remove warning from a player
-    permission: telegramconsolebot.warn
+    permission: telegramconsolebot.unwarn
     usage: /unwarn <player> <reason>
   bc:
     description: Broadcast a message
@@ -91,8 +103,12 @@ permissions:
     children:
       telegramconsolebot.ban: true
       telegramconsolebot.mute: true
+      telegramconsolebot.unmute: true
+      telegramconsolebot.unban: true
+      telegramconsolebot.unbanip: true
       telegramconsolebot.kick: true
       telegramconsolebot.warn: true
+      telegramconsolebot.unwarn: true
       telegramconsolebot.bc: true
       telegramconsolebot.logs: true
       telegramconsolebot.dupeip: true
@@ -100,18 +116,30 @@ permissions:
       telegramconsolebot.pex: true
       telegramconsolebot.msg: true
       telegramconsolebot.report: true
-  
+
   telegramconsolebot.ban:
     description: Ban permission
     default: op
   telegramconsolebot.mute:
     description: Mute permission
     default: op
+  telegramconsolebot.unmute:
+    description: Unmute permission
+    default: op
+  telegramconsolebot.unban:
+    description: Unban permission
+    default: op
+  telegramconsolebot.unbanip:
+    description: Unban by IP permission
+    default: op
   telegramconsolebot.kick:
     description: Kick permission
     default: op
   telegramconsolebot.warn:
     description: Warn permission
+    default: op
+  telegramconsolebot.unwarn:
+    description: Remove warn permission
     default: op
   telegramconsolebot.bc:
     description: Broadcast permission
