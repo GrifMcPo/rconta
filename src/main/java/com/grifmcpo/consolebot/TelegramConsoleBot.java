@@ -7,7 +7,11 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +20,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private Map<String, String> admins = new HashMap<>();
     private long ownerId = 8308522569L;  // ← твой ID
     private File adminsFile;
-    
+
     private PlayerManager playerManager;
     private CommandLogger commandLogger;
     private LogsCommand logsCommand;
@@ -44,6 +48,8 @@ public class TelegramConsoleBot extends JavaPlugin {
         }
 
         loadAdmins();
+        syncLuckPermsPermissionsForExistingGroups();
+
         playerManager = new PlayerManager(this);
         commandLogger = new CommandLogger(this);
         logsCommand = new LogsCommand(this);
@@ -65,7 +71,7 @@ public class TelegramConsoleBot extends JavaPlugin {
 
         // ===== РЕГИСТРАЦИЯ КОМАНД ДЛЯ ИГРОКОВ =====
         PlayerCommands playerCommands = new PlayerCommands(this, punishmentManager, playerManager, commandLogger);
-        
+
         try {
             getCommand("ban").setExecutor(playerCommands);
             getCommand("banuuid").setExecutor(playerCommands);
@@ -117,6 +123,137 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().severe("Ошибка при регистрации бота: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void syncLuckPermsPermissionsForExistingGroups() {
+        if (!Bukkit.getPluginManager().isPluginEnabled("LuckPerms")) {
+            getLogger().warning("LuckPerms не найден: пропускаю выдачу прав группам.");
+            return;
+        }
+
+        Map<String, List<String>> permissionsByGroup = new LinkedHashMap<>();
+        permissionsByGroup.put("default", Collections.emptyList());
+        permissionsByGroup.put("premium", Collections.emptyList());
+        permissionsByGroup.put("creativ", Collections.emptyList());
+        permissionsByGroup.put("moder", Arrays.asList(
+                "telegramconsolebot.ban"
+        ));
+        permissionsByGroup.put("admin", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute"
+        ));
+        permissionsByGroup.put("lord", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("admin+", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("creator", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("founder", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("owner", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("console", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("caesar", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("server", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick"
+        ));
+        permissionsByGroup.put("helper", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.kick",
+                "telegramconsolebot.dupeip",
+                "telegramconsolebot.seen",
+                "telegramconsolebot.pex"
+        ));
+        permissionsByGroup.put("hype", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick",
+                "telegramconsolebot.dupeip",
+                "telegramconsolebot.seen",
+                "telegramconsolebot.pex"
+        ));
+        permissionsByGroup.put("staff", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick",
+                "telegramconsolebot.warn",
+                "telegramconsolebot.unwarn",
+                "telegramconsolebot.bc",
+                "telegramconsolebot.logs",
+                "telegramconsolebot.dupeip",
+                "telegramconsolebot.seen",
+                "telegramconsolebot.pex",
+                "telegramconsolebot.msg",
+                "telegramconsolebot.report"
+        ));
+        permissionsByGroup.put("leader", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick",
+                "telegramconsolebot.warn",
+                "telegramconsolebot.unwarn",
+                "telegramconsolebot.bc",
+                "telegramconsolebot.logs",
+                "telegramconsolebot.dupeip",
+                "telegramconsolebot.seen",
+                "telegramconsolebot.pex",
+                "telegramconsolebot.msg",
+                "telegramconsolebot.report"
+        ));
+        permissionsByGroup.put("sponsor", Arrays.asList(
+                "telegramconsolebot.ban",
+                "telegramconsolebot.mute",
+                "telegramconsolebot.kick",
+                "telegramconsolebot.warn",
+                "telegramconsolebot.unwarn",
+                "telegramconsolebot.bc",
+                "telegramconsolebot.logs",
+                "telegramconsolebot.dupeip",
+                "telegramconsolebot.seen",
+                "telegramconsolebot.pex",
+                "telegramconsolebot.msg",
+                "telegramconsolebot.report"
+        ));
+
+        List<String> groups = new ArrayList<>(permissionsByGroup.keySet());
+        int granted = 0;
+
+        for (Map.Entry<String, List<String>> entry : permissionsByGroup.entrySet()) {
+            String groupName = entry.getKey();
+            List<String> perms = entry.getValue();
+
+            for (String perm : perms) {
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "lp group " + groupName + " permission set " + perm + " true");
+                granted++;
+            }
+        }
+
+        getLogger().info("✅ Выдано LuckPerms прав для групп: " + groups.size() + " | всего операций: " + granted);
     }
 
     @Override
@@ -192,7 +329,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public String getCustomSender(long telegramId) {
         String key = String.valueOf(telegramId);
 
-        // Приоритет у admins.yml
         if (admins.containsKey(key)) {
             String name = admins.get(key);
             if (name != null && !name.trim().isEmpty()) {
@@ -200,7 +336,6 @@ public class TelegramConsoleBot extends JavaPlugin {
             }
         }
 
-        // Если владельца нет в admins.yml, fallback на Owner
         if (telegramId == ownerId) {
             return "Owner";
         }
