@@ -63,6 +63,54 @@ public class AccountLinkManager {
         return code;
     }
 
+    public String findPlayerNameByCode(String code) {
+        if (code == null || code.trim().isEmpty()) {
+            return null;
+        }
+
+        String normalizedCode = code.trim().toUpperCase(Locale.ROOT);
+        for (String line : readLines(pendingLinksFile)) {
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+            String[] parts = line.split("\\|");
+            if (parts.length < 5) {
+                continue;
+            }
+
+            String savedCode = parts[2];
+            long expiresAt = parseLong(parts[3], 0L);
+            String savedUsed = parts[4];
+
+            if (!savedCode.equalsIgnoreCase(normalizedCode)) {
+                continue;
+            }
+            if (Boolean.parseBoolean(savedUsed)) {
+                continue;
+            }
+            if (expiresAt > 0 && expiresAt < System.currentTimeMillis()) {
+                continue;
+            }
+
+            return parts[0];
+        }
+        return null;
+    }
+
+    public LinkStatus completeTelegramLink(String code, long telegramId, String telegramUsername) {
+        String playerName = findPlayerNameByCode(code);
+        if (playerName == null) {
+            return new LinkStatus(false, "Код не найден или срок его действия истёк.", "NOT_FOUND");
+        }
+        if (isPlayerLinked(playerName)) {
+            return new LinkStatus(false, "Этот аккаунт уже привязан.", "ALREADY_LINKED");
+        }
+        if (isTelegramLinked(telegramId)) {
+            return new LinkStatus(false, "Этот Telegram уже привязан к другому аккаунту.", "ALREADY_LINKED_TELEGRAM");
+        }
+        return linkPlayerByCode(playerName, code, telegramId, telegramUsername);
+    }
+
     public LinkStatus linkPlayerByCode(String playerName, String code, long telegramId, String telegramUsername) {
         if (playerName == null || code == null || code.trim().isEmpty()) {
             return new LinkStatus(false, "Неверный код привязки.", "INVALID");
@@ -111,6 +159,7 @@ public class AccountLinkManager {
                 String linkedLine = normalizedPlayer + "|" + uuid + "|" + telegramId + "|" + safeUsername(telegramUsername) + "|" + System.currentTimeMillis();
                 appendLine(linkedAccountsFile, linkedLine);
                 updated.add(savedName + "|" + uuid + "|" + savedCode + "|" + expiresAt + "|true");
+                writeLines(pendingLinksFile, updated);
                 return new LinkStatus(true, "Привязка успешно выполнена.", "SUCCESS");
             }
             updated.add(line);
