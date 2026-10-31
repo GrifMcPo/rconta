@@ -14,7 +14,7 @@ import java.util.Map;
 public class TelegramConsoleBot extends JavaPlugin {
 
     private Map<String, String> admins = new HashMap<>();
-    private long ownerId = 8308522569L;  // ← ТВОЙ ID
+    private long ownerId = 8308522569L;  // ← твой ID
     private File adminsFile;
     
     private PlayerManager playerManager;
@@ -139,14 +139,21 @@ public class TelegramConsoleBot extends JavaPlugin {
                 org.bukkit.configuration.file.YamlConfiguration config =
                         org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(adminsFile);
                 for (String key : config.getKeys(false)) {
-                    admins.put(key, config.getString(key));
+                    String value = config.getString(key);
+                    if (key != null && value != null && !value.trim().isEmpty()) {
+                        admins.put(key, value);
+                    }
                 }
             } catch (Exception e) {
                 getLogger().warning("Ошибка загрузки admins.yml: " + e.getMessage());
             }
         }
-        // Добавляем владельца в админы автоматически
-        admins.put(String.valueOf(ownerId), "Owner");
+
+        // Владелец добавляется только как fallback, если его нет в admins.yml
+        if (!admins.containsKey(String.valueOf(ownerId))) {
+            admins.put(String.valueOf(ownerId), "Owner");
+        }
+
         getLogger().info("Загружено администраторов: " + admins.size());
     }
 
@@ -182,9 +189,23 @@ public class TelegramConsoleBot extends JavaPlugin {
     public void addAdmin(String telegramId, String playerName) { admins.put(telegramId, playerName); saveAdmins(); }
     public void removeAdmin(String telegramId) { admins.remove(telegramId); saveAdmins(); }
     public boolean isAdmin(long telegramId) { return admins.containsKey(String.valueOf(telegramId)) || telegramId == ownerId; }
-    public String getCustomSender(long telegramId) { 
-        if (telegramId == ownerId) return "Owner";
-        return admins.get(String.valueOf(telegramId)); 
+    public String getCustomSender(long telegramId) {
+        String key = String.valueOf(telegramId);
+
+        // Приоритет у admins.yml
+        if (admins.containsKey(key)) {
+            String name = admins.get(key);
+            if (name != null && !name.trim().isEmpty()) {
+                return name;
+            }
+        }
+
+        // Если владельца нет в admins.yml, fallback на Owner
+        if (telegramId == ownerId) {
+            return "Owner";
+        }
+
+        return "RCON@" + telegramId;
     }
     public PlayerManager getPlayerManager() { return playerManager; }
     public CommandLogger getCommandLogger() { return commandLogger; }
