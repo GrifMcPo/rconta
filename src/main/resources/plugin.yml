@@ -95,6 +95,10 @@ commands:
     description: Report a player
     permission: telegramconsolebot.report
     usage: /report <player> <reason>
+  tg:
+    description: Generate Telegram account binding code
+    permission: telegramconsolebot.link
+    usage: /tg
 
 permissions:
   telegramconsolebot.admin:
@@ -116,6 +120,7 @@ permissions:
       telegramconsolebot.pex: true
       telegramconsolebot.msg: true
       telegramconsolebot.report: true
+      telegramconsolebot.link: true
 
   telegramconsolebot.ban:
     description: Ban permission
@@ -161,4 +166,7 @@ permissions:
     default: true
   telegramconsolebot.report:
     description: Report permission
+    default: true
+  telegramconsolebot.link:
+    description: Telegram account binding
     default: true

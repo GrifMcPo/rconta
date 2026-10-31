@@ -18,7 +18,7 @@ import java.util.Map;
 public class TelegramConsoleBot extends JavaPlugin {
 
     private Map<String, String> admins = new HashMap<>();
-    private long ownerId = 8308522569L;  // ← твой ID
+    private long ownerId = 8308522569L;
     private File adminsFile;
 
     private PlayerManager playerManager;
@@ -33,6 +33,7 @@ public class TelegramConsoleBot extends JavaPlugin {
     private PrivateMessageManager privateMessageManager;
     private ReportManager reportManager;
     private BotManager botManager;
+    private AccountLinkManager accountLinkManager;
     private TelegramBotHandler botHandler;
 
     @Override
@@ -62,6 +63,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         privateMessageManager = new PrivateMessageManager(this);
         reportManager = new ReportManager(this);
         botManager = new BotManager(this);
+        accountLinkManager = new AccountLinkManager(this);
 
         Bukkit.getPluginManager().registerEvents(punishmentManager, this);
         Bukkit.getPluginManager().registerEvents(commandLogger, this);
@@ -69,7 +71,6 @@ public class TelegramConsoleBot extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(privateMessageManager, this);
         Bukkit.getPluginManager().registerEvents(botManager, this);
 
-        // ===== РЕГИСТРАЦИЯ КОМАНД ДЛЯ ИГРОКОВ =====
         PlayerCommands playerCommands = new PlayerCommands(this, punishmentManager, playerManager, commandLogger);
 
         try {
@@ -89,7 +90,13 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().warning("Некоторые команды не найдены в plugin.yml");
         }
 
-        // ===== РЕГИСТРАЦИЯ КОМАНД ЛС =====
+        try {
+            getCommand("tg").setExecutor(new TelegramLinkCommand(this, accountLinkManager));
+            getLogger().info("✅ Команда /tg зарегистрирована!");
+        } catch (NullPointerException e) {
+            getLogger().warning("Команда /tg не найдена в plugin.yml");
+        }
+
         PrivateMessageCommands pmCommands = new PrivateMessageCommands(privateMessageManager);
         try {
             getCommand("msg").setExecutor(pmCommands);
@@ -104,7 +111,6 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().warning("Некоторые команды ЛС не найдены в plugin.yml");
         }
 
-        // ===== РЕГИСТРАЦИЯ КОМАНДЫ /REPORT =====
         try {
             getCommand("report").setExecutor(new ReportCommand(this, reportManager));
             getLogger().info("✅ Команда /report зарегистрирована!");
@@ -112,7 +118,6 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().warning("Команда /report не найдена в plugin.yml");
         }
 
-        // ===== РЕГИСТРАЦИЯ TELEGRAM БОТА =====
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
@@ -136,58 +141,69 @@ public class TelegramConsoleBot extends JavaPlugin {
         permissionsByGroup.put("premium", Collections.emptyList());
         permissionsByGroup.put("creativ", Collections.emptyList());
         permissionsByGroup.put("moder", Arrays.asList(
-                "telegramconsolebot.ban"
+                "telegramconsolebot.ban",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("admin", Arrays.asList(
                 "telegramconsolebot.ban",
-                "telegramconsolebot.mute"
+                "telegramconsolebot.mute",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("lord", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("admin+", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("creator", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("founder", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("owner", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("console", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("caesar", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("server", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.mute",
-                "telegramconsolebot.kick"
+                "telegramconsolebot.kick",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("helper", Arrays.asList(
                 "telegramconsolebot.ban",
                 "telegramconsolebot.kick",
                 "telegramconsolebot.dupeip",
                 "telegramconsolebot.seen",
-                "telegramconsolebot.pex"
+                "telegramconsolebot.pex",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("hype", Arrays.asList(
                 "telegramconsolebot.ban",
@@ -195,7 +211,8 @@ public class TelegramConsoleBot extends JavaPlugin {
                 "telegramconsolebot.kick",
                 "telegramconsolebot.dupeip",
                 "telegramconsolebot.seen",
-                "telegramconsolebot.pex"
+                "telegramconsolebot.pex",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("staff", Arrays.asList(
                 "telegramconsolebot.ban",
@@ -209,7 +226,8 @@ public class TelegramConsoleBot extends JavaPlugin {
                 "telegramconsolebot.seen",
                 "telegramconsolebot.pex",
                 "telegramconsolebot.msg",
-                "telegramconsolebot.report"
+                "telegramconsolebot.report",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("leader", Arrays.asList(
                 "telegramconsolebot.ban",
@@ -223,7 +241,8 @@ public class TelegramConsoleBot extends JavaPlugin {
                 "telegramconsolebot.seen",
                 "telegramconsolebot.pex",
                 "telegramconsolebot.msg",
-                "telegramconsolebot.report"
+                "telegramconsolebot.report",
+                "telegramconsolebot.link"
         ));
         permissionsByGroup.put("sponsor", Arrays.asList(
                 "telegramconsolebot.ban",
@@ -237,7 +256,8 @@ public class TelegramConsoleBot extends JavaPlugin {
                 "telegramconsolebot.seen",
                 "telegramconsolebot.pex",
                 "telegramconsolebot.msg",
-                "telegramconsolebot.report"
+                "telegramconsolebot.report",
+                "telegramconsolebot.link"
         ));
 
         List<String> groups = new ArrayList<>(permissionsByGroup.keySet());
@@ -286,7 +306,6 @@ public class TelegramConsoleBot extends JavaPlugin {
             }
         }
 
-        // Владелец добавляется только как fallback, если его нет в admins.yml
         if (!admins.containsKey(String.valueOf(ownerId))) {
             admins.put(String.valueOf(ownerId), "Owner");
         }
@@ -353,5 +372,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public PrivateMessageManager getPrivateMessageManager() { return privateMessageManager; }
     public ReportManager getReportManager() { return reportManager; }
     public BotManager getBotManager() { return botManager; }
+    public AccountLinkManager getAccountLinkManager() { return accountLinkManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
 }

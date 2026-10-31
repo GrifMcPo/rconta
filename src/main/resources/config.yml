@@ -6,11 +6,18 @@ rcon:
   host: "127.0.0.1"
   port: 25575
   password: "_87_14_10grifmcproRcon"
+
+# === НАСТРОЙКИ ПРИВЯЗКИ TELEGRAM ===
+telegram-link:
+  enabled: true
+  command: "tg"
+  valid-minutes: 10
+
 # === НАСТРОЙКИ БАЗЫ ДАННЫХ ===
 database:
   # Тип: sqlite или mysql
   type: sqlite
-  
+
   # Настройки для MySQL (если type=mysql)
   mysql:
     host: localhost
