@@ -118,26 +118,44 @@ public class PlayerCommands implements CommandExecutor {
 
         switch (cmd) {
             case "ban":
+            case "tban":
                 return handleBan(sender, args);
             case "banuuid":
                 return handleBanUuid(sender, args);
             case "mute":
+            case "tmute":
                 return handleMute(sender, args);
+            case "unmute":
+            case "tunmute":
+                return handleUnmute(sender, args);
+            case "unban":
+            case "tunban":
+                return handleUnban(sender, args);
+            case "unbanip":
+                return handleUnbanIp(sender, args);
             case "kick":
+            case "tkick":
                 return handleKick(sender, args);
             case "warn":
+            case "twarn":
                 return handleWarn(sender, args);
             case "unwarn":
+            case "tunwarn":
                 return handleUnwarn(sender, args);
             case "bc":
+            case "tbc":
                 return handleBroadcast(sender, args);
             case "logs":
+            case "tlogs":
                 return handleLogs(sender, args);
             case "dupeip":
+            case "tdupeip":
                 return handleDupeip(sender, args);
             case "seen":
+            case "tseen":
                 return handleSeen(sender, args);
             case "pex":
+            case "tpex":
                 return handlePex(sender, args);
             default:
                 return false;
@@ -189,49 +207,29 @@ public class PlayerCommands implements CommandExecutor {
     }
 
     private boolean canUseAction(CommandSender sender, String action) {
-        String group = getSenderGroup(sender);
-        int priority = getGroupPriority(group);
-        if (priority < 0) {
+        if (sender == null) {
+            return true;
+        }
+        if (!(sender instanceof Player) || sender.hasPermission("telegramconsolebot.admin")) {
             return true;
         }
 
-        switch (action.toLowerCase(Locale.ROOT)) {
-            case "ban":
-                return priority >= getGroupPriority("moder");
-            case "mute":
-                return priority >= getGroupPriority("admin") || priority >= getGroupPriority("moder");
-            case "kick":
-                return priority >= getGroupPriority("lord");
-            case "warn":
-                return priority >= getGroupPriority("helper");
-            case "ipban":
-                return priority >= getGroupPriority("helper");
-            default:
-                return true;
-        }
+        String permission = "telegramconsolebot." + action.toLowerCase(Locale.ROOT);
+        return sender.hasPermission(permission);
     }
 
     private boolean canUseHiddenFlag(CommandSender sender) {
-        return getGroupPriority(getSenderGroup(sender)) >= getGroupPriority("staff");
+        return !(sender instanceof Player) || sender.hasPermission("telegramconsolebot.admin") || sender.hasPermission("telegramconsolebot.staff");
     }
 
     private boolean canPunishTarget(CommandSender sender, String playerName, String action) {
-        String senderGroup = getSenderGroup(sender);
-        String targetGroup = getTargetGroup(playerName);
-        int senderPriority = getGroupPriority(senderGroup);
-        int targetPriority = getGroupPriority(targetGroup);
-
-        if (senderPriority >= 0 && targetPriority >= 0 && targetPriority > senderPriority) {
-            sender.sendMessage("§c§lИгрок выше вас донатом!");
-            return false;
+        if (sender == null) {
+            return true;
         }
-
-        if (!canUseAction(sender, action)) {
-            sender.sendMessage("§c§lУ вас нет прав на эту команду!");
-            return false;
+        if (!(sender instanceof Player) || sender.hasPermission("telegramconsolebot.admin")) {
+            return true;
         }
-
-        return true;
+        return canUseAction(sender, action);
     }
 
     private String clampDurationByGroup(CommandSender sender, String action, String duration) {
@@ -330,10 +328,7 @@ public class PlayerCommands implements CommandExecutor {
         if (!hidden) {
             return false;
         }
-        if (canUseHiddenFlag(sender)) {
-            return true;
-        }
-        return false;
+        return canUseHiddenFlag(sender);
     }
 
     private String safeReason(String baseReason) {
@@ -518,6 +513,81 @@ public class PlayerCommands implements CommandExecutor {
             commandLogger.logCommand(sender.getName(), "mute " + playerName + " " + duration + " " + reason + (hidden ? " -s" : ""));
         } else {
             sender.sendMessage("§c" + playerName + " уже замучен!");
+        }
+        return true;
+    }
+
+    private boolean handleUnmute(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("telegramconsolebot.unmute")) {
+            sender.sendMessage("§cУ вас нет прав на использование этой команды!");
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage("§cИспользование: /unmute <ник> <причина>");
+            return true;
+        }
+
+        String playerName = args[0];
+        String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+        String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
+
+        boolean success = punishmentManager.unmutePlayer(playerName, issuer, reason, true);
+        if (success) {
+            sender.sendMessage("§aИгрок " + playerName + " размучен по причине: " + reason);
+            commandLogger.logCommand(sender.getName(), "unmute " + playerName + " " + reason);
+        } else {
+            sender.sendMessage("§cИгрок " + playerName + " не замучен!");
+        }
+        return true;
+    }
+
+    private boolean handleUnban(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("telegramconsolebot.unban")) {
+            sender.sendMessage("§cУ вас нет прав на использование этой команды!");
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage("§cИспользование: /unban <ник> <причина>");
+            return true;
+        }
+
+        String playerName = args[0];
+        String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+        String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
+
+        boolean success = punishmentManager.unbanPlayer(playerName, issuer, reason, true);
+        if (success) {
+            sender.sendMessage("§aИгрок " + playerName + " разбанен по причине: " + reason);
+            commandLogger.logCommand(sender.getName(), "unban " + playerName + " " + reason);
+        } else {
+            sender.sendMessage("§cИгрок " + playerName + " не забанен!");
+        }
+        return true;
+    }
+
+    private boolean handleUnbanIp(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("telegramconsolebot.unbanip")) {
+            sender.sendMessage("§cУ вас нет прав на использование этой команды!");
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage("§cИспользование: /unbanip <ник> <причина>");
+            return true;
+        }
+
+        String playerName = args[0];
+        String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+        String issuer = sender instanceof Player ? ((Player) sender).getName() : "Console";
+
+        boolean success = punishmentManager.unbanIp(playerName, issuer, reason);
+        if (success) {
+            sender.sendMessage("§aIP игрока " + playerName + " разбанен по причине: " + reason);
+            commandLogger.logCommand(sender.getName(), "unbanip " + playerName + " " + reason);
+        } else {
+            sender.sendMessage("§cIP игрока " + playerName + " не забанен!");
         }
         return true;
     }
