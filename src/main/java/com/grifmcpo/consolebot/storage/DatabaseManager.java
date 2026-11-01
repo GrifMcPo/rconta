@@ -11,14 +11,20 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class DatabaseManager {
+
+    private static final List<String> EXPECTED_TABLES = Arrays.asList(
+            "punishments", "ip_history", "command_logs", "admins"
+    );
 
     private final JavaPlugin plugin;
     private final File databaseFile;
@@ -42,7 +48,6 @@ public class DatabaseManager {
         if (!ensureConnection()) {
             return;
         }
-
         List<Map<String, Object>> rows = getAllActivePunishmentsSync();
         for (Map<String, Object> row : rows) {
             String targetName = (String) row.get("target_name");
@@ -51,7 +56,7 @@ public class DatabaseManager {
             }
             activePunishmentCache.computeIfAbsent(targetName.toLowerCase(), key -> new ArrayList<>()).add(row);
         }
-        plugin.getLogger().info("Loaded active punishment cache entries: " + activePunishmentCache.size());
+        plugin.getLogger().info("Punishment cache loaded: " + activePunishmentCache.size() + " active entries");
     }
 
     public synchronized List<Map<String, Object>> getCachedActivePunishments(String targetName) {
@@ -78,23 +83,29 @@ public class DatabaseManager {
             try {
                 if (!connection.isClosed()) {
                     storageAvailable = true;
+                    plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
                     return;
                 }
             } catch (SQLException ignored) {
-                // continue with reopen
+                // continue reopen
             }
         }
 
         storageAvailable = false;
         try {
+            plugin.getLogger().info("SQLite init: opening connection to " + databaseFile.getAbsolutePath());
             Class.forName("org.sqlite.JDBC");
             connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath());
 
             try (Statement statement = connection.createStatement()) {
+                plugin.getLogger().info("SQLite init: applying PRAGMA journal_mode=WAL");
                 statement.execute("PRAGMA journal_mode=WAL;");
+                plugin.getLogger().info("SQLite init: applying PRAGMA foreign_keys=ON");
                 statement.execute("PRAGMA foreign_keys=ON;");
+                plugin.getLogger().info("SQLite init: applying PRAGMA busy_timeout=5000");
                 statement.execute("PRAGMA busy_timeout = 5000;");
 
+                plugin.getLogger().info("SQLite init: creating table punishments");
                 statement.execute("CREATE TABLE IF NOT EXISTS punishments ("
                         + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                         + "target_uuid TEXT, "
@@ -108,6 +119,7 @@ public class DatabaseManager {
                         + "ip_address TEXT, "
                         + "source TEXT DEFAULT 'manual')");
 
+                plugin.getLogger().info("SQLite init: creating table ip_history");
                 statement.execute("CREATE TABLE IF NOT EXISTS ip_history ("
                         + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                         + "player_uuid TEXT NOT NULL, "
@@ -115,9 +127,12 @@ public class DatabaseManager {
                         + "ip_address TEXT NOT NULL, "
                         + "seen_at INTEGER NOT NULL)");
 
+                plugin.getLogger().info("SQLite init: creating index idx_ip_history_uuid");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_uuid ON ip_history(player_uuid, seen_at)");
+                plugin.getLogger().info("SQLite init: creating index idx_ip_history_ip");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_ip ON ip_history(ip_address, seen_at)");
 
+                plugin.getLogger().info("SQLite init: creating table command_logs");
                 statement.execute("CREATE TABLE IF NOT EXISTS command_logs ("
                         + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                         + "executor TEXT NOT NULL, "
@@ -125,30 +140,66 @@ public class DatabaseManager {
                         + "result TEXT, "
                         + "created_at INTEGER NOT NULL)");
 
+                plugin.getLogger().info("SQLite init: creating table admins");
                 statement.execute("CREATE TABLE IF NOT EXISTS admins ("
                         + "uuid TEXT PRIMARY KEY, "
                         + "name TEXT, "
                         + "added_by TEXT, "
                         + "added_at INTEGER NOT NULL)");
 
+                plugin.getLogger().info("SQLite init: creating index idx_admins_name");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
             }
 
             initialized = true;
             storageAvailable = true;
-            plugin.getLogger().info("SQLite database initialized: " + databaseFile.getAbsolutePath());
+            plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
         } catch (ClassNotFoundException e) {
-            plugin.getLogger().severe("SQLite JDBC driver not found in classpath; continuing with storage disabled. " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(Level.SEVERE, "SQLite JDBC driver not found in classpath; continuing with storage disabled.", e);
             initialized = false;
             storageAvailable = false;
             connection = null;
         } catch (SQLException e) {
-            plugin.getLogger().severe("Ошибка инициализации SQLite: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(Level.SEVERE, "Ошибка инициализации SQLite.", e);
             initialized = false;
             storageAvailable = false;
             connection = null;
+        }
+    }
+
+    public synchronized void verifySchema() {
+        init();
+        if (connection == null || !storageAvailable) {
+            plugin.getLogger().severe("Schema verify: storage unavailable, no DB tables checked");
+            return;
+        }
+
+        List<String> found = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                found.add(resultSet.getString("name"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Schema verify failed while querying sqlite_master.", e);
+            storageAvailable = false;
+            return;
+        }
+
+        List<String> missing = new ArrayList<>();
+        for (String expected : EXPECTED_TABLES) {
+            if (!found.contains(expected)) {
+                missing.add(expected);
+            }
+        }
+
+        int expected = EXPECTED_TABLES.size();
+        int foundCount = found.size();
+        plugin.getLogger().info("Schema verify: expected=" + expected + ", found=" + foundCount + ", missing=" + missing);
+
+        if (!missing.isEmpty()) {
+            plugin.getLogger().log(Level.SEVERE, "Missing SQLite tables: " + missing + ". Storage disabled.");
+            storageAvailable = false;
         }
     }
 
@@ -163,7 +214,7 @@ public class DatabaseManager {
             connection.close();
             plugin.getLogger().info("SQLite connection closed: " + databaseFile.getAbsolutePath());
         } catch (SQLException e) {
-            plugin.getLogger().severe("Ошибка закрытия SQLite: " + e.getMessage());
+            plugin.getLogger().log(Level.SEVERE, "Ошибка закрытия SQLite.", e);
         } finally {
             connection = null;
             initialized = false;
@@ -219,13 +270,15 @@ public class DatabaseManager {
                         }
                     }
                 }
-                plugin.getLogger().info("Администраторы мигрированы из admins.yml в SQLite: " + imported);
+                plugin.getLogger().info("Migrated admins.yml: " + imported + " entries");
+            } else {
+                plugin.getLogger().info("Skipped migration: table not empty");
             }
 
             File migratedFile = new File(adminsFile.getParentFile(), adminsFile.getName() + ".migrated");
             if (!migratedFile.exists()) {
                 if (adminsFile.renameTo(migratedFile)) {
-                    plugin.getLogger().info("admins.yml перенесён в admins.yml.migrated после миграции в SQLite");
+                    plugin.getLogger().info("admins.yml renamed to admins.yml.migrated");
                 } else {
                     plugin.getLogger().warning("Не удалось переименовать admins.yml в admins.yml.migrated");
                 }
@@ -241,7 +294,7 @@ public class DatabaseManager {
                 init();
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("Ошибка проверки соединения SQLite: " + e.getMessage());
+            plugin.getLogger().log(Level.SEVERE, "Ошибка проверки соединения SQLite.", e);
             connection = null;
             initialized = false;
             storageAvailable = false;
@@ -274,9 +327,16 @@ public class DatabaseManager {
 
     public CompletableFuture<Boolean> recordIp(UUID uuid, String playerName, String ip) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.recordIp: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(recordIpInternal(uuid, playerName, ip));
+                boolean result = recordIpInternal(uuid, playerName, ip);
+                plugin.getLogger().fine("recordIp: name=" + playerName + ", ip=" + ip + ", result=" + result);
+                future.complete(result);
             } catch (Exception e) {
                 logException("recordIp", e);
                 future.complete(false);
@@ -289,12 +349,18 @@ public class DatabaseManager {
                                                       String reason, String operator, long expiresAt,
                                                       String ipAddress, String source) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.addPunishment: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source);
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
                 }
+                plugin.getLogger().fine("addPunishment: target=" + targetName + ", type=" + type + ", active=" + success + ", expiresAt=" + expiresAt);
                 future.complete(success);
             } catch (Exception e) {
                 logException("addPunishment", e);
@@ -306,12 +372,18 @@ public class DatabaseManager {
 
     public CompletableFuture<Boolean> deactivatePunishment(String name, String type) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.deactivatePunishment: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 boolean success = deactivatePunishmentInternal(name, type);
                 if (success) {
                     invalidateActivePunishmentCache(name);
                 }
+                plugin.getLogger().fine("deactivatePunishment: name=" + name + ", type=" + type + ", result=" + success);
                 future.complete(success);
             } catch (Exception e) {
                 logException("deactivatePunishment", e);
@@ -323,9 +395,16 @@ public class DatabaseManager {
 
     public CompletableFuture<List<Map<String, Object>>> getActivePunishments(String name) {
         CompletableFuture<List<Map<String, Object>>> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.getActivePunishments: storage unavailable, returning empty list");
+            future.complete(new ArrayList<>());
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(getActivePunishmentsInternal(name));
+                List<Map<String, Object>> rows = getActivePunishmentsInternal(name);
+                plugin.getLogger().fine("getActivePunishments: name=" + name + ", rows=" + rows.size());
+                future.complete(rows);
             } catch (Exception e) {
                 logException("getActivePunishments", e);
                 future.complete(new ArrayList<>());
@@ -366,10 +445,11 @@ public class DatabaseManager {
     }
 
     public List<Map<String, Object>> getPunishmentsByTarget(String targetName, int limit) {
-        if (!ensureConnection()) {
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.getPunishmentsByTarget: storage unavailable, returning empty list");
             return new ArrayList<>();
         }
-        if (targetName == null) {
+        if (targetName == null || targetName.trim().isEmpty()) {
             return new ArrayList<>();
         }
 
@@ -403,9 +483,16 @@ public class DatabaseManager {
 
     public CompletableFuture<Boolean> isIpBanned(String ip) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.isIpBanned: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(isIpBannedInternal(ip));
+                boolean result = isIpBannedInternal(ip);
+                plugin.getLogger().fine("isIpBanned: ip=" + ip + ", result=" + result);
+                future.complete(result);
             } catch (Exception e) {
                 logException("isIpBanned", e);
                 future.complete(false);
@@ -416,9 +503,16 @@ public class DatabaseManager {
 
     public CompletableFuture<List<String>> getRecentIps(UUID uuid, int days) {
         CompletableFuture<List<String>> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.getRecentIps: storage unavailable, returning empty list");
+            future.complete(new ArrayList<>());
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(getRecentIpsInternal(uuid, days));
+                List<String> result = getRecentIpsInternal(uuid, days);
+                plugin.getLogger().fine("getRecentIps: uuid=" + uuid + ", days=" + days + ", rows=" + result.size());
+                future.complete(result);
             } catch (Exception e) {
                 logException("getRecentIps", e);
                 future.complete(new ArrayList<>());
@@ -429,9 +523,16 @@ public class DatabaseManager {
 
     public CompletableFuture<Integer> countDistinctIps(UUID uuid, int days) {
         CompletableFuture<Integer> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.countDistinctIps: storage unavailable, returning 0");
+            future.complete(0);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(countDistinctIpsInternal(uuid, days));
+                int result = countDistinctIpsInternal(uuid, days);
+                plugin.getLogger().fine("countDistinctIps: uuid=" + uuid + ", days=" + days + ", result=" + result);
+                future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctIps", e);
                 future.complete(0);
@@ -442,9 +543,16 @@ public class DatabaseManager {
 
     public CompletableFuture<Integer> countDistinctUuidsForIp(String ip, int days) {
         CompletableFuture<Integer> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.countDistinctUuidsForIp: storage unavailable, returning 0");
+            future.complete(0);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(countDistinctUuidsForIpInternal(ip, days));
+                int result = countDistinctUuidsForIpInternal(ip, days);
+                plugin.getLogger().fine("countDistinctUuidsForIp: ip=" + ip + ", days=" + days + ", result=" + result);
+                future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctUuidsForIp", e);
                 future.complete(0);
@@ -455,15 +563,49 @@ public class DatabaseManager {
 
     public CompletableFuture<Boolean> logCommand(String executor, String command, String result) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.logCommand: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(logCommandInternal(executor, command, result));
+                boolean success = logCommandInternal(executor, command, result);
+                plugin.getLogger().fine("logCommand: executor=" + executor + ", command=" + command + ", result=" + result + ", success=" + success);
+                future.complete(success);
             } catch (Exception e) {
                 logException("logCommand", e);
                 future.complete(false);
             }
         });
         return future;
+    }
+
+    public List<Map<String, Object>> getCommandLogs(int limit) {
+        if (!storageAvailable) {
+            plugin.getLogger().warning("DatabaseManager.getCommandLogs: storage unavailable, returning empty list");
+            return new ArrayList<>();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        String sql = "SELECT * FROM command_logs ORDER BY created_at DESC LIMIT ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, Math.max(1, Math.min(200, limit)));
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", set.getLong("id"));
+                    row.put("executor", set.getString("executor"));
+                    row.put("command", set.getString("command"));
+                    row.put("result", set.getString("result"));
+                    row.put("created_at", set.getLong("created_at"));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            logException("getCommandLogs", e);
+        }
+        return result;
     }
 
     private synchronized boolean recordIpInternal(UUID uuid, String playerName, String ip) {
@@ -473,12 +615,12 @@ public class DatabaseManager {
 
         String normalizedIp = normalizeIp(ip);
         if (normalizedIp == null || isLoopback(normalizedIp)) {
-            plugin.getLogger().warning("recordIp: пропускаю loopback/IP без записи: " + ip + " (player=" + playerName + ")");
+            plugin.getLogger().warning("recordIp: skip loopback/IP without writing: " + ip + " (player=" + playerName + ")");
             return false;
         }
 
         if (uuid == null) {
-            plugin.getLogger().warning("recordIp: UUID не может быть null для игрока " + playerName);
+            plugin.getLogger().warning("recordIp: UUID cannot be null for player " + playerName);
             return false;
         }
 
@@ -503,7 +645,7 @@ public class DatabaseManager {
         }
 
         if (targetName == null || targetName.trim().isEmpty()) {
-            plugin.getLogger().warning("addPunishment: target_name не может быть пустым");
+            plugin.getLogger().warning("addPunishment: target_name cannot be empty");
             return false;
         }
 
@@ -756,6 +898,6 @@ public class DatabaseManager {
     }
 
     private void logException(String method, Exception e) {
-        plugin.getLogger().severe("DatabaseManager." + method + " failed: " + e.getMessage());
+        plugin.getLogger().log(Level.SEVERE, "DatabaseManager." + method + " failed.", e);
     }
 }
