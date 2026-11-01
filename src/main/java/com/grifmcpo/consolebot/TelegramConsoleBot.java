@@ -21,6 +21,8 @@ public class TelegramConsoleBot extends JavaPlugin {
     private Map<String, String> admins = new HashMap<>();
     private long ownerId = 8308522569L;
     private File adminsFile;
+    private boolean telegramAvailable = true;
+    private boolean storageAvailable = true;
 
     private PlayerManager playerManager;
     private CommandLogger commandLogger;
@@ -44,16 +46,16 @@ public class TelegramConsoleBot extends JavaPlugin {
 
         saveDefaultConfig();
         getDataFolder().mkdirs();
+
+        String token = resolveTelegramToken();
+        if (token == null || token.trim().isEmpty()) {
+            telegramAvailable = false;
+            getLogger().severe("Токен не задан. Укажите telegram.token в config.yml (получить у @BotFather)");
+        }
+
         databaseManager = new DatabaseManager(this);
         databaseManager.init();
         databaseManager.scheduleCleanup();
-
-        String token = getConfig().getString("telegram-token");
-        if (token == null || token.isEmpty()) {
-            getLogger().severe("Токен не найден в config.yml!");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
 
         loadAdmins();
         syncLuckPermsPermissionsForExistingGroups();
@@ -97,11 +99,13 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().warning("Некоторые команды не найдены в plugin.yml");
         }
 
-        try {
-            getCommand("tg").setExecutor(new TelegramLinkCommand(this, accountLinkManager));
-            getLogger().info("✅ Команда /tg зарегистрирована!");
-        } catch (NullPointerException e) {
-            getLogger().warning("Команда /tg не найдена в plugin.yml");
+        if (telegramAvailable) {
+            try {
+                getCommand("tg").setExecutor(new TelegramLinkCommand(this, accountLinkManager));
+                getLogger().info("✅ Команда /tg зарегистрирована!");
+            } catch (NullPointerException e) {
+                getLogger().warning("Команда /tg не найдена в plugin.yml");
+            }
         }
 
         PrivateMessageCommands pmCommands = new PrivateMessageCommands(privateMessageManager);
@@ -125,16 +129,38 @@ public class TelegramConsoleBot extends JavaPlugin {
             getLogger().warning("Команда /report не найдена в plugin.yml");
         }
 
-        try {
-            TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
-                    commandExecutor, punishmentManager, botBanManager, groupManager);
-            botsApi.registerBot(botHandler);
-            getLogger().info("Telegram-бот успешно зарегистрирован!");
-        } catch (TelegramApiException e) {
-            getLogger().severe("Ошибка при регистрации бота: " + e.getMessage());
-            e.printStackTrace();
+        if (telegramAvailable) {
+            try {
+                TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+                botHandler = new TelegramBotHandler(token, this, playerManager, commandLogger, logsCommand,
+                        commandExecutor, punishmentManager, botBanManager, groupManager);
+                botsApi.registerBot(botHandler);
+                getLogger().info("Telegram-бот успешно зарегистрирован!");
+            } catch (TelegramApiException e) {
+                getLogger().severe("Ошибка при регистрации бота: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            getLogger().warning("Telegram отключен: продолжаем работу без Telegram-части.");
         }
+    }
+
+    private String resolveTelegramToken() {
+        String token = getConfig().getString("telegram.token");
+        if (token != null && !token.trim().isEmpty()) {
+            return token.trim();
+        }
+
+        String legacyToken = getConfig().getString("token");
+        if (legacyToken != null && !legacyToken.trim().isEmpty()) {
+            getLogger().warning("Токен найден в старом формате config.yml: token. Перенесите его в telegram.token");
+            getConfig().set("telegram.token", legacyToken.trim());
+            getConfig().set("token", null);
+            saveConfig();
+            return legacyToken.trim();
+        }
+
+        return null;
     }
 
     private void syncLuckPermsPermissionsForExistingGroups() {
@@ -391,4 +417,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public AccountLinkManager getAccountLinkManager() { return accountLinkManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
     public DatabaseManager getDatabaseManager() { return databaseManager; }
+    public boolean isTelegramAvailable() { return telegramAvailable; }
+    public boolean isStorageAvailable() { return storageAvailable; }
 }

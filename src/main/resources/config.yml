@@ -1,11 +1,13 @@
-# Токен твоего бота от @BotFather
-token: "8984790613:AAEN3aFTOsgb6CIwDEiVxKYhyLUTiXoNztU"
+# Telegram token is configured under `telegram.token`.
+# Keep bot token here. For old configs, compatibility fallback is supported.
+telegram:
+  token: ""
 
 # Настройки RCON
 rcon:
   host: "127.0.0.1"
   port: 25575
-  password: "_87_14_10grifmcproRcon"
+  password: ""
 
 # === НАСТРОЙКИ ПРИВЯЗКИ TELEGRAM ===
 telegram-link:
