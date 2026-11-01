@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class IpHistoryTracker {
 
     private static final long HISTORY_WINDOW_MS = 7L * 24L * 60L * 60L * 1000L;
+    private static final int DYNAMIC_IP_THRESHOLD = 3;
 
     private final Map<String, List<IpHistoryEntry>> history = new ConcurrentHashMap<>();
 
@@ -64,7 +65,7 @@ public class IpHistoryTracker {
             }
         }
 
-        if (unique <= 3) {
+        if (unique <= DYNAMIC_IP_THRESHOLD) {
             return false;
         }
 
@@ -75,8 +76,7 @@ public class IpHistoryTracker {
         if (playerName == null || ip == null) return false;
 
         for (Map.Entry<String, List<IpHistoryEntry>> entry : history.entrySet()) {
-            String otherPlayer = entry.getKey();
-            if (otherPlayer.equalsIgnoreCase(playerName)) {
+            if (entry.getKey().equalsIgnoreCase(playerName)) {
                 continue;
             }
 
@@ -92,6 +92,19 @@ public class IpHistoryTracker {
 
     public boolean isLoopback(String ip) {
         return ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0") || ip.startsWith("127.");
+    }
+
+    public int countDistinctIpsInWindow(String playerName, long millis) {
+        if (playerName == null) return 0;
+        List<IpHistoryEntry> entries = history.getOrDefault(playerName, Collections.emptyList());
+        long now = System.currentTimeMillis();
+        int count = 0;
+        for (IpHistoryEntry entry : entries) {
+            if (now - entry.timestamp <= millis) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static class IpHistoryEntry {
