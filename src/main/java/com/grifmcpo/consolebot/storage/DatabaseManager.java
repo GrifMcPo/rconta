@@ -701,7 +701,7 @@ public class DatabaseManager {
             statement.setString(1, targetUuid == null ? null : targetUuid.toString());
             statement.setString(2, targetName);
             statement.setString(3, type);
-            statement.setString(4, reason); 
+            statement.setString(4, reason);
             statement.setString(5, operator == null ? "system" : operator);
             long createdAt = System.currentTimeMillis();
             statement.setLong(6, createdAt);
@@ -1028,6 +1028,8 @@ public class DatabaseManager {
                         statement.setLong(4, createdAt);
                         statement.executeUpdate();
                         imported++;
+                    } catch (SQLException e) {
+                        logException("migrateLegacyCommandLogsIfNeeded", e);
                     }
                 }
             } catch (IOException e) {
