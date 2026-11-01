@@ -506,8 +506,15 @@ public class DatabaseManager {
     }
 
     private synchronized boolean ensureConnection() {
-        if (connection == null || connection.isClosed()) {
-            init();
+        try {
+            if (connection == null || connection.isClosed()) {
+                init();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Ошибка проверки соединения SQLite: " + e.getMessage());
+            connection = null;
+            initialized = false;
+            return false;
         }
         return connection != null;
     }
@@ -547,4 +554,3 @@ public class DatabaseManager {
         plugin.getLogger().severe("DatabaseManager." + method + " failed: " + e.getMessage());
     }
 }
-
