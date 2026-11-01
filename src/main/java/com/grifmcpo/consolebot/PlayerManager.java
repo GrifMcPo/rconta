@@ -74,9 +74,10 @@ public class PlayerManager {
             else return false;
         }
 
+        String ip = normalizeIp(getPlayerIP(playerName));
         authConfig.set(playerName + ".telegramId", telegramId);
         authConfig.set(playerName + ".uuid", uuid.toString());
-        authConfig.set(playerName + ".ip", getPlayerIP(playerName));
+        authConfig.set(playerName + ".ip", ip != null ? ip : "0.0.0.0");
         authConfig.set(playerName + ".sessionTime", System.currentTimeMillis());
         authConfig.set(playerName + ".registered", true);
         saveAuthData();
@@ -117,138 +118,72 @@ public class PlayerManager {
 
     public boolean isIPMatch(String playerName, String ip) {
         String savedIP = authConfig.getString(playerName + ".ip");
-        return savedIP != null && savedIP.equals(ip);
+        return savedIP != null && savedIP.equals(normalizeIp(ip));
     }
 
     public void updateIP(String playerName, String ip) {
-        authConfig.set(playerName + ".ip", ip);
-        saveAuthData();
+        String normalizedIp = normalizeIp(ip);
+        if (normalizedIp != null) {
+            authConfig.set(playerName + ".ip", normalizedIp);
+            saveAuthData();
+        }
     }
 
     public String getPlayerIp(String playerName) {
         String ip = authConfig.getString(playerName + ".ip");
-        if (ip != null && !ip.isEmpty() && !ip.equals("0.0.0.0")) {
-            return ip;
+        String normalized = normalizeIp(ip);
+        if (normalized != null) {
+            return normalized;
         }
-        
-        // Если IP не найден в auth.yml, пробуем через другие источники
+
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.isOnline() && player.getAddress() != null) {
-            return player.getAddress().getHostString();
-        }
-        
-        // Пробуем через usercache.json
-        try {
-            File userCache = new File("usercache.json");
-            if (userCache.exists()) {
-                String content = new String(java.nio.file.Files.readAllBytes(userCache.toPath()));
-                // Ищем IP в логах
-                File logsDir = new File("logs");
-                if (logsDir.exists()) {
-                    for (File file : logsDir.listFiles()) {
-                        if (file.getName().endsWith(".log") || file.getName().endsWith(".txt")) {
-                            try {
-                                String logContent = new String(java.nio.file.Files.readAllBytes(file.toPath()));
-                                String[] lines = logContent.split("\n");
-                                for (int i = lines.length - 1; i >= 0; i--) {
-                                    if (lines[i].contains("logged in") && lines[i].contains(playerName)) {
-                                        // Ищем IP в строке логина
-                                        String[] parts = lines[i].split(" ");
-                                        for (String part : parts) {
-                                            if (part.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")) {
-                                                return part;
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (Exception e) {}
-                        }
-                    }
-                }
+            String address = normalizeIp(player.getAddress().getHostString());
+            if (address != null) {
+                authConfig.set(playerName + ".ip", address);
+                saveAuthData();
+                return address;
             }
-        } catch (Exception e) {}
-        
+        }
+
         return "—";
     }
 
     public List<String> getPlayersByIp(String ip) {
         List<String> players = new ArrayList<>();
-        
-        // Проверяем auth.yml
+        String normalizedIp = normalizeIp(ip);
+        if (normalizedIp == null) return players;
+
         for (String key : authConfig.getKeys(false)) {
             String savedIp = authConfig.getString(key + ".ip");
-            if (ip.equals(savedIp)) {
-                if (!players.contains(key)) {
-                    players.add(key);
-                }
+            if (normalizedIp.equals(normalizeIp(savedIp))) {
+                if (!players.contains(key)) players.add(key);
             }
         }
-        
-        // Проверяем онлайн игроков
+
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getAddress() != null && ip.equals(player.getAddress().getHostString())) {
-                if (!players.contains(player.getName())) {
-                    players.add(player.getName());
-                }
+            String playerIp = player.getAddress() != null ? normalizeIp(player.getAddress().getHostString()) : null;
+            if (normalizedIp.equals(playerIp) && !players.contains(player.getName())) {
+                players.add(player.getName());
             }
         }
-        
-        // Проверяем логи
-        try {
-            File logsDir = new File("logs");
-            if (logsDir.exists()) {
-                for (File file : logsDir.listFiles()) {
-                    if (file.getName().endsWith(".log") || file.getName().endsWith(".txt")) {
-                        try {
-                            String content = new String(java.nio.file.Files.readAllBytes(file.toPath()));
-                            String[] lines = content.split("\n");
-                            for (String line : lines) {
-                                if (line.contains(ip) && line.contains("logged in")) {
-                                    String playerName = extractPlayerNameFromLog(line);
-                                    if (playerName != null && !players.contains(playerName)) {
-                                        players.add(playerName);
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {}
-                    }
-                }
-            }
-        } catch (Exception e) {}
-        
+
         return players;
     }
 
-    private String extractPlayerNameFromLog(String logLine) {
-        try {
-            String[] parts = logLine.split(" ");
-            for (int i = 0; i < parts.length; i++) {
-                if (parts[i].equalsIgnoreCase("player") || parts[i].equalsIgnoreCase("Player")) {
-                    if (i + 1 < parts.length) {
-                        String name = parts[i + 1];
-                        if (name != null && !name.isEmpty()) {
-                            return name;
-                        }
-                    }
-                }
-            }
-            // Альтернативный поиск
-            for (String part : parts) {
-                if (part.contains("logged in") && part.contains("/")) {
-                    String[] subParts = part.split("/");
-                    if (subParts.length > 0) {
-                        return subParts[0];
-                    }
-                }
-            }
-        } catch (Exception e) {}
-        return null;
+    private String normalizeIp(String ip) {
+        if (ip == null) return null;
+        String result = ip.trim();
+        if (result.isEmpty() || result.equals("—") || result.equals("0.0.0.0") || result.equals("127.0.0.1")) {
+            return null;
+        }
+        return result.matches("\\d{1,3}(\\.\\d{1,3}){3}") ? result : null;
     }
 
     private String getPlayerIP(String playerName) {
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.getAddress() != null) {
-            return player.getAddress().getHostString();
+            return normalizeIp(player.getAddress().getHostString());
         }
         return "0.0.0.0";
     }
