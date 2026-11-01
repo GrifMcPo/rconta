@@ -16,6 +16,7 @@ import java.util.UUID;
 public class PlayerManager {
 
     private final JavaPlugin plugin;
+    private final IpHistoryTracker ipHistoryTracker;
     private File authFile;
     private FileConfiguration authConfig;
     private final Map<String, String> pendingCodes = new HashMap<>();
@@ -24,6 +25,7 @@ public class PlayerManager {
 
     public PlayerManager(JavaPlugin plugin) {
         this.plugin = plugin;
+        this.ipHistoryTracker = new IpHistoryTracker();
         loadAuthData();
     }
 
@@ -82,6 +84,11 @@ public class PlayerManager {
         authConfig.set(playerName + ".registered", true);
         saveAuthData();
         playerSessions.put(uuid, telegramId);
+
+        if (ip != null) {
+            ipHistoryTracker.recordIpHistory(playerName, ip);
+        }
+
         return true;
     }
 
@@ -126,6 +133,7 @@ public class PlayerManager {
         if (normalizedIp != null) {
             authConfig.set(playerName + ".ip", normalizedIp);
             saveAuthData();
+            ipHistoryTracker.recordIpHistory(playerName, normalizedIp);
         }
     }
 
@@ -142,6 +150,7 @@ public class PlayerManager {
             if (address != null) {
                 authConfig.set(playerName + ".ip", address);
                 saveAuthData();
+                ipHistoryTracker.recordIpHistory(playerName, address);
                 return address;
             }
         }
@@ -171,6 +180,27 @@ public class PlayerManager {
         return players;
     }
 
+    public boolean isProxyLoopback(String ip) {
+        return ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0") || ip.startsWith("127.");
+    }
+
+    public boolean isPotentialDynamicIp(String playerName, String ip) {
+        return ipHistoryTracker.isLikelyDynamicIp(playerName, ip);
+    }
+
+    public boolean isPotentialIpEscape(String playerName, String ip) {
+        return ipHistoryTracker.isPotentialIpEscape(playerName, ip);
+    }
+
+    public List<String> getIpHistory(String playerName) {
+        return ipHistoryTracker.getRecentHistory(playerName);
+    }
+
+    public void recordIpHistory(String playerName, String ip) {
+        if (playerName == null || ip == null) return;
+        ipHistoryTracker.recordIpHistory(playerName, normalizeIp(ip));
+    }
+
     private String normalizeIp(String ip) {
         if (ip == null) return null;
         String result = ip.trim();
@@ -183,7 +213,11 @@ public class PlayerManager {
     private String getPlayerIP(String playerName) {
         Player player = Bukkit.getPlayerExact(playerName);
         if (player != null && player.getAddress() != null) {
-            return normalizeIp(player.getAddress().getHostString());
+            String ip = normalizeIp(player.getAddress().getHostString());
+            if (ip != null && !isProxyLoopback(ip)) {
+                return ip;
+            }
+            return player.getAddress().getHostString();
         }
         return "0.0.0.0";
     }
@@ -194,6 +228,7 @@ public class PlayerManager {
             String name = getPlayerNameByTelegram(entry.getValue());
             return name != null && name.equals(playerName);
         });
+        ipHistoryTracker.clearHistory(playerName);
         saveAuthData();
     }
 
@@ -204,3 +239,9 @@ public class PlayerManager {
         }
     }
 }
+
+
+
+
+
+
