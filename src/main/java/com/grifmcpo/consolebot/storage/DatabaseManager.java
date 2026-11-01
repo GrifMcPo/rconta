@@ -1,9 +1,14 @@
 package com.grifmcpo.consolebot.storage;
 
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -87,7 +92,6 @@ public class DatabaseManager {
                     return;
                 }
             } catch (SQLException ignored) {
-                // continue reopen
             }
         }
 
@@ -153,6 +157,8 @@ public class DatabaseManager {
 
             initialized = true;
             storageAvailable = true;
+            migrateLegacyHistoryIfNeeded();
+            migrateLegacyCommandLogsIfNeeded();
             plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
         } catch (ClassNotFoundException e) {
             plugin.getLogger().log(Level.SEVERE, "SQLite JDBC driver not found in classpath; continuing with storage disabled.", e);
@@ -359,6 +365,7 @@ public class DatabaseManager {
                 boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source);
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
+                    plugin.getLogger().info("Punishment inserted: id=?, type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + "");
                 }
                 plugin.getLogger().fine("addPunishment: target=" + targetName + ", type=" + type + ", active=" + success + ", expiresAt=" + expiresAt);
                 future.complete(success);
@@ -457,7 +464,7 @@ public class DatabaseManager {
         String sql = "SELECT * FROM punishments WHERE target_name = ? ORDER BY created_at DESC LIMIT ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, targetName);
-            statement.setInt(2, Math.max(1, limit));
+            statement.setInt(2, Math.max(1, Math.min(200, limit > 0 ? limit : 50)));
             try (ResultSet set = statement.executeQuery()) {
                 while (set.next()) {
                     Map<String, Object> row = new HashMap<>();
@@ -477,6 +484,41 @@ public class DatabaseManager {
             }
         } catch (SQLException e) {
             logException("getPunishmentsByTarget", e);
+        }
+        return result;
+    }
+
+    public List<Map<String, Object>> getPunishmentsByOperator(String operator, int limit) {
+        if (!storageAvailable) {
+            return new ArrayList<>();
+        }
+        if (operator == null || operator.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        String sql = "SELECT * FROM punishments WHERE operator = ? ORDER BY created_at DESC LIMIT ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, operator);
+            statement.setInt(2, Math.max(1, Math.min(200, limit > 0 ? limit : 50)));
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", set.getLong("id"));
+                    row.put("target_uuid", set.getString("target_uuid"));
+                    row.put("target_name", set.getString("target_name"));
+                    row.put("type", set.getString("type"));
+                    row.put("reason", set.getString("reason"));
+                    row.put("operator", set.getString("operator"));
+                    row.put("created_at", set.getLong("created_at"));
+                    row.put("expires_at", set.getLong("expires_at"));
+                    row.put("active", set.getInt("active"));
+                    row.put("ip_address", set.getString("ip_address"));
+                    row.put("source", set.getString("source"));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            logException("getPunishmentsByOperator", e);
         }
         return result;
     }
@@ -630,7 +672,11 @@ public class DatabaseManager {
             statement.setString(2, playerName == null ? "unknown" : playerName);
             statement.setString(3, normalizedIp);
             statement.setLong(4, System.currentTimeMillis());
-            return statement.executeUpdate() > 0;
+            boolean result = statement.executeUpdate() > 0;
+            if (result) {
+                plugin.getLogger().info("IP recorded: uuid=" + uuid + ", name=" + playerName + ", ip=" + normalizedIp);
+            }
+            return result;
         } catch (SQLException e) {
             logException("recordIpInternal", e);
             return false;
@@ -655,14 +701,18 @@ public class DatabaseManager {
             statement.setString(1, targetUuid == null ? null : targetUuid.toString());
             statement.setString(2, targetName);
             statement.setString(3, type);
-            statement.setString(4, reason);
+            statement.setString(4, reason); 
             statement.setString(5, operator == null ? "system" : operator);
             long createdAt = System.currentTimeMillis();
             statement.setLong(6, createdAt);
             statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
             statement.setString(8, ipAddress);
             statement.setString(9, source == null || source.trim().isEmpty() ? "manual" : source);
-            return statement.executeUpdate() > 0;
+            boolean result = statement.executeUpdate() > 0;
+            if (result) {
+                plugin.getLogger().info("Punishment inserted: id=generated, type=" + type + ", target=" + targetName + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt);
+            }
+            return result;
         } catch (SQLException e) {
             logException("addPunishmentInternal", e);
             return false;
@@ -863,6 +913,156 @@ public class DatabaseManager {
             }
         } catch (SQLException e) {
             logException("cleanupExpiredDataInternal", e);
+        }
+    }
+
+    private synchronized void migrateLegacyHistoryIfNeeded() {
+        if (!storageAvailable || connection == null) {
+            return;
+        }
+        File historyFile = new File(plugin.getDataFolder(), "history.yml");
+        if (!historyFile.exists()) {
+            return;
+        }
+        if (rowCount("punishments") > 0) {
+            renameLegacyFile(historyFile, "history.yml.migrated");
+            plugin.getLogger().info("Skipped migration: table not empty");
+            return;
+        }
+
+        try {
+            FileConfiguration config = YamlConfiguration.loadConfiguration(historyFile);
+            int imported = 0;
+            for (String playerName : config.getKeys(false)) {
+                Object value = config.get(playerName);
+                if (!(value instanceof List<?>)) {
+                    continue;
+                }
+                for (Object entryObj : (List<?>) value) {
+                    if (!(entryObj instanceof Map<?, ?>)) {
+                        continue;
+                    }
+                    Map<?, ?> entry = (Map<?, ?>) entryObj;
+                    String type = entry.get("type") == null ? "" : String.valueOf(entry.get("type"));
+                    String targetName = entry.get("player") == null ? playerName : String.valueOf(entry.get("player"));
+                    String operator = entry.get("issuer") == null ? "system" : String.valueOf(entry.get("issuer"));
+                    String reason = entry.get("reason") == null ? "" : String.valueOf(entry.get("reason"));
+                    long createdAt = entry.get("timestamp") instanceof Number ? ((Number) entry.get("timestamp")).longValue() : System.currentTimeMillis();
+                    long expiresAt = entry.get("expiry") instanceof Number ? ((Number) entry.get("expiry")).longValue() : 0L;
+                    boolean active = !type.startsWith("un") && !"kick".equals(type) && !(expiresAt > 0 && expiresAt <= System.currentTimeMillis());
+                    if (type == null || type.trim().isEmpty()) {
+                        continue;
+                    }
+                    String sql = "INSERT INTO punishments(target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setString(1, null);
+                        statement.setString(2, targetName);
+                        statement.setString(3, type);
+                        statement.setString(4, reason);
+                        statement.setString(5, operator);
+                        statement.setLong(6, createdAt);
+                        statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
+                        statement.setInt(8, active ? 1 : 0);
+                        statement.setString(9, null);
+                        statement.setString(10, "migrated-from-history-yml");
+                        statement.executeUpdate();
+                        imported++;
+                    }
+                }
+            }
+            if (imported > 0) {
+                plugin.getLogger().info("Migrated history.yml to punishments: " + imported + " entries");
+            }
+            renameLegacyFile(historyFile, "history.yml.migrated");
+        } catch (Exception e) {
+            logException("migrateLegacyHistoryIfNeeded", e);
+        }
+    }
+
+    private synchronized void migrateLegacyCommandLogsIfNeeded() {
+        if (!storageAvailable || connection == null) {
+            return;
+        }
+        File dataFolder = plugin.getDataFolder();
+        if (dataFolder == null || !dataFolder.exists()) {
+            return;
+        }
+        File[] files = dataFolder.listFiles((dir, name) -> name.startsWith("logs_") && name.endsWith(".txt"));
+        if (files == null || files.length == 0) {
+            return;
+        }
+        if (rowCount("command_logs") > 0) {
+            for (File file : files) {
+                renameLegacyFile(file, file.getName() + ".migrated");
+            }
+            plugin.getLogger().info("Skipped migration: table not empty");
+            return;
+        }
+
+        int imported = 0;
+        for (File file : files) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty()) {
+                        continue;
+                    }
+                    String[] parts = trimmed.split(" \\| ", 3);
+                    if (parts.length < 3) {
+                        continue;
+                    }
+                    long createdAt;
+                    try {
+                        createdAt = java.time.LocalDateTime.parse(parts[0].replace(" ", "T")).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                    } catch (Exception ignored) {
+                        createdAt = System.currentTimeMillis();
+                    }
+                    String executor = parts[1];
+                    String command = parts[2];
+                    String sql = "INSERT INTO command_logs(executor, command, result, created_at) VALUES (?, ?, ?, ?)";
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setString(1, executor);
+                        statement.setString(2, command);
+                        statement.setString(3, "migrated-from-logs-txt");
+                        statement.setLong(4, createdAt);
+                        statement.executeUpdate();
+                        imported++;
+                    }
+                }
+            } catch (IOException e) {
+                logException("migrateLegacyCommandLogsIfNeeded", e);
+            }
+            renameLegacyFile(file, file.getName() + ".migrated");
+        }
+        if (imported > 0) {
+            plugin.getLogger().info("Migrated logs_*.txt to command_logs: " + imported + " entries");
+        }
+    }
+
+    private int rowCount(String tableName) {
+        if (!ensureConnection()) {
+            return 0;
+        }
+        String sql = "SELECT COUNT(*) FROM " + tableName;
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            if (set.next()) {
+                return set.getInt(1);
+            }
+        } catch (SQLException e) {
+            logException("rowCount", e);
+        }
+        return 0;
+    }
+
+    private void renameLegacyFile(File file, String targetName) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+        File target = new File(file.getParentFile(), targetName);
+        if (!target.exists() && file.renameTo(target)) {
+            plugin.getLogger().info(file.getName() + " renamed to " + target.getName());
         }
     }
 
