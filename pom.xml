@@ -40,6 +40,13 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- SQLite JDBC -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.46.1.0</version>
+        </dependency>
+
         <!-- Telegram Bots API -->
         <dependency>
             <groupId>org.telegram</groupId>
@@ -64,7 +71,7 @@
 
     <build>
         <finalName>${project.artifactId}</finalName>
-        
+
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
@@ -76,7 +83,7 @@
                 </includes>
             </resource>
         </resources>
-        
+
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -113,6 +120,7 @@
                                     <include>jakarta.annotation:*</include>
                                     <include>org.glassfish.hk2:*</include>
                                     <include>org.javassist:*</include>
+                                    <include>org.xerial:sqlite-jdbc</include>
                                 </includes>
                             </artifactSet>
                             <filters>

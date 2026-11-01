@@ -1,5 +1,6 @@
 package com.grifmcpo.consolebot;
 
+import com.grifmcpo.consolebot.storage.DatabaseManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
@@ -35,12 +36,17 @@ public class TelegramConsoleBot extends JavaPlugin {
     private BotManager botManager;
     private AccountLinkManager accountLinkManager;
     private TelegramBotHandler botHandler;
+    private DatabaseManager databaseManager;
 
     @Override
     public void onEnable() {
         getLogger().info("ConsoleBot включен!");
 
         saveDefaultConfig();
+        databaseManager = new DatabaseManager(this);
+        databaseManager.init();
+        databaseManager.scheduleCleanup();
+
         String token = getConfig().getString("telegram-token");
         if (token == null || token.isEmpty()) {
             getLogger().severe("Токен не найден в config.yml!");
@@ -51,7 +57,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         loadAdmins();
         syncLuckPermsPermissionsForExistingGroups();
 
-        playerManager = new PlayerManager(this);
+        playerManager = new PlayerManager(this, databaseManager);
         commandLogger = new CommandLogger(this);
         logsCommand = new LogsCommand(this);
         commandExecutor = new CommandExecutor(this);
@@ -279,6 +285,9 @@ public class TelegramConsoleBot extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("ConsoleBot выключен.");
+        if (databaseManager != null) {
+            databaseManager.close();
+        }
         if (commandLogger != null) commandLogger.saveLogs();
         if (commandExecutor != null) commandExecutor.close();
     }
@@ -374,4 +383,6 @@ public class TelegramConsoleBot extends JavaPlugin {
     public BotManager getBotManager() { return botManager; }
     public AccountLinkManager getAccountLinkManager() { return accountLinkManager; }
     public TelegramBotHandler getBotHandler() { return botHandler; }
+    public DatabaseManager getDatabaseManager() { return databaseManager; }
 }
+

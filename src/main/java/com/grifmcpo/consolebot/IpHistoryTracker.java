@@ -1,119 +1,151 @@
 package com.grifmcpo.consolebot;
 
-import java.util.ArrayList;
+import com.grifmcpo.consolebot.storage.DatabaseManager;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 public class IpHistoryTracker {
 
-    private static final long HISTORY_WINDOW_MS = 7L * 24L * 60L * 60L * 1000L;
-    private static final int DYNAMIC_IP_THRESHOLD = 3;
+    private static final int DEFAULT_DYNAMIC_THRESHOLD = 3;
+    private static final int DEFAULT_LOOKBACK_DAYS = 7;
 
-    private final Map<String, List<IpHistoryEntry>> history = new ConcurrentHashMap<>();
+    private final JavaPlugin plugin;
+    private final DatabaseManager databaseManager;
+
+    public IpHistoryTracker(JavaPlugin plugin, DatabaseManager databaseManager) {
+        this.plugin = plugin;
+        this.databaseManager = databaseManager;
+    }
 
     public void recordIpHistory(String playerName, String ip) {
-        if (playerName == null || playerName.trim().isEmpty() || ip == null || ip.isEmpty()) {
+        if (playerName == null || playerName.trim().isEmpty() || ip == null || ip.trim().isEmpty()) {
             return;
         }
 
-        List<IpHistoryEntry> entries = history.computeIfAbsent(playerName, key -> new ArrayList<>());
-        long now = System.currentTimeMillis();
-
-        entries.removeIf(entry -> now - entry.timestamp > HISTORY_WINDOW_MS);
-
-        for (IpHistoryEntry entry : entries) {
-            if (entry.ip.equals(ip)) {
-                entry.timestamp = now;
-                return;
-            }
+        String normalizedIp = normalizeIp(ip);
+        if (normalizedIp == null || isLoopback(normalizedIp)) {
+            return;
         }
 
-        entries.add(new IpHistoryEntry(ip, now));
+        Player player = Bukkit.getPlayerExact(playerName);
+        UUID uuid = player != null ? player.getUniqueId() : null;
+        if (uuid == null) {
+            return;
+        }
+
+        databaseManager.recordIp(uuid, playerName, normalizedIp);
     }
 
     public void clearHistory(String playerName) {
-        if (playerName == null) return;
-        history.remove(playerName);
+        // SQLite storage keeps historical records, no in-memory cache to clear.
     }
 
     public List<String> getRecentHistory(String playerName) {
-        List<String> result = new ArrayList<>();
-        if (playerName == null) return result;
-
-        List<IpHistoryEntry> entries = history.getOrDefault(playerName, Collections.emptyList());
-        for (IpHistoryEntry entry : entries) {
-            result.add(entry.ip);
+        if (playerName == null || playerName.trim().isEmpty()) {
+            return Collections.emptyList();
         }
-        return result;
+
+        Player player = Bukkit.getPlayerExact(playerName);
+        UUID uuid = player != null ? player.getUniqueId() : null;
+        if (uuid == null) {
+            return Collections.emptyList();
+        }
+
+        int lookbackDays = plugin.getConfig().getInt("dynamic-ip.lookback-days", DEFAULT_LOOKBACK_DAYS);
+        return databaseManager.getRecentIps(uuid, lookbackDays).join();
     }
 
     public boolean isLikelyDynamicIp(String playerName, String ip) {
-        if (playerName == null || ip == null) return false;
-
-        List<IpHistoryEntry> entries = history.getOrDefault(playerName, Collections.emptyList());
-        if (entries.isEmpty()) {
+        if (playerName == null || playerName.trim().isEmpty() || ip == null) {
             return false;
         }
 
-        long now = System.currentTimeMillis();
-        int unique = 0;
-        for (IpHistoryEntry entry : entries) {
-            if (now - entry.timestamp <= HISTORY_WINDOW_MS) {
-                unique++;
-            }
-        }
-
-        if (unique <= DYNAMIC_IP_THRESHOLD) {
+        String normalizedIp = normalizeIp(ip);
+        if (normalizedIp == null || isLoopback(normalizedIp)) {
             return false;
         }
 
-        return entries.stream().filter(e -> e.ip.equals(ip)).count() == 0;
+        Player player = Bukkit.getPlayerExact(playerName);
+        UUID uuid = player != null ? player.getUniqueId() : null;
+        if (uuid == null) {
+            return false;
+        }
+
+        int threshold = plugin.getConfig().getInt("dynamic-ip.threshold", DEFAULT_DYNAMIC_THRESHOLD);
+        int lookbackDays = plugin.getConfig().getInt("dynamic-ip.lookback-days", DEFAULT_LOOKBACK_DAYS);
+
+        int distinctIps = databaseManager.countDistinctIps(uuid, lookbackDays).join();
+        if (distinctIps < threshold) {
+            return false;
+        }
+
+        List<String> recentIps = databaseManager.getRecentIps(uuid, lookbackDays).join();
+        if (recentIps.contains(normalizedIp)) {
+            return false;
+        }
+
+        int distinctUuidsForIp = databaseManager.countDistinctUuidsForIp(normalizedIp, lookbackDays).join();
+        return distinctUuidsForIp <= 1;
     }
 
     public boolean isPotentialIpEscape(String playerName, String ip) {
-        if (playerName == null || ip == null) return false;
-
-        for (Map.Entry<String, List<IpHistoryEntry>> entry : history.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(playerName)) {
-                continue;
-            }
-
-            for (IpHistoryEntry historyEntry : entry.getValue()) {
-                if (historyEntry.ip.equals(ip)) {
-                    return true;
-                }
-            }
+        if (ip == null) {
+            return false;
         }
 
-        return false;
+        String normalizedIp = normalizeIp(ip);
+        if (normalizedIp == null || isLoopback(normalizedIp)) {
+            return false;
+        }
+
+        int lookbackDays = plugin.getConfig().getInt("alt-account.lookback-days", 30);
+        int distinctUuids = databaseManager.countDistinctUuidsForIp(normalizedIp, lookbackDays).join();
+        return distinctUuids > 1;
     }
 
     public boolean isLoopback(String ip) {
-        return ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0") || ip.startsWith("127.");
+        if (ip == null) {
+            return true;
+        }
+        String normalized = ip.trim();
+        return normalized.equals("0.0.0.0")
+                || normalized.equals("127.0.0.1")
+                || normalized.equals("::1")
+                || normalized.equalsIgnoreCase("localhost")
+                || normalized.startsWith("127.")
+                || normalized.startsWith("::1");
     }
 
     public int countDistinctIpsInWindow(String playerName, long millis) {
-        if (playerName == null) return 0;
-        List<IpHistoryEntry> entries = history.getOrDefault(playerName, Collections.emptyList());
-        long now = System.currentTimeMillis();
-        int count = 0;
-        for (IpHistoryEntry entry : entries) {
-            if (now - entry.timestamp <= millis) {
-                count++;
-            }
+        if (playerName == null || playerName.trim().isEmpty()) {
+            return 0;
         }
-        return count;
+
+        Player player = Bukkit.getPlayerExact(playerName);
+        UUID uuid = player != null ? player.getUniqueId() : null;
+        if (uuid == null) {
+            return 0;
+        }
+
+        int days = Math.max(1, (int) TimeUnit.MILLISECONDS.toDays(millis));
+        return databaseManager.countDistinctIps(uuid, days).join();
     }
 
-    private static class IpHistoryEntry {
-        private String ip;
-        private long timestamp;
-
-        private IpHistoryEntry(String ip, long timestamp) {
-            this.ip = ip;
-            this.timestamp = timestamp;
+    private String normalizeIp(String ip) {
+        if (ip == null) {
+            return null;
         }
+        String result = ip.trim();
+        if (result.isEmpty() || result.equals("—") || result.equals("0.0.0.0") || result.equals("127.0.0.1") || result.equals("::1") || result.equalsIgnoreCase("localhost")) {
+            return null;
+        }
+        return result;
     }
 }
+

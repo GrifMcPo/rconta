@@ -1,5 +1,5 @@
 # Токен твоего бота от @BotFather
-telegram-token: "8984790613:AAEN3aFTOsgb6CIwDEiVxKYhyLUTiXoNztU"
+token: "8984790613:AAEN3aFTOsgb6CIwDEiVxKYhyLUTiXoNztU"
 
 # Настройки RCON
 rcon:
@@ -13,18 +13,25 @@ telegram-link:
   command: "tg"
   valid-minutes: 10
 
-# === НАСТРОЙКИ БАЗЫ ДАННЫХ ===
-database:
-  # Тип: sqlite или mysql
+# === НАСТРОЙКИ ХРАНЕНИЯ ===
+storage:
   type: sqlite
+  file: data.db
+  cleanup:
+    ip-history-days: 90
+    command-logs-days: 30
 
-  # Настройки для MySQL (если type=mysql)
-  mysql:
-    host: localhost
-    port: 3306
-    database: minecraft
-    username: root
-    password: ""
+alt-account:
+  min-accounts-per-ip: 2
+  lookback-days: 30
+  cooldown-minutes: 60
+
+dynamic-ip:
+  threshold: 3
+  lookback-days: 7
+
+loopback:
+  action: warn
 
 # Очистка старых логов (в днях)
 log-cleanup-days: 30

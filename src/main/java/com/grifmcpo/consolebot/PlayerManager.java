@@ -1,5 +1,6 @@
 package com.grifmcpo.consolebot;
 
+import com.grifmcpo.consolebot.storage.DatabaseManager;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -16,6 +17,7 @@ import java.util.UUID;
 public class PlayerManager {
 
     private final JavaPlugin plugin;
+    private final DatabaseManager databaseManager;
     private final IpHistoryTracker ipHistoryTracker;
     private File authFile;
     private FileConfiguration authConfig;
@@ -24,8 +26,13 @@ public class PlayerManager {
     private final Map<String, Long> codeTimestamps = new HashMap<>();
 
     public PlayerManager(JavaPlugin plugin) {
+        this(plugin, null);
+    }
+
+    public PlayerManager(JavaPlugin plugin, DatabaseManager databaseManager) {
         this.plugin = plugin;
-        this.ipHistoryTracker = new IpHistoryTracker();
+        this.databaseManager = databaseManager != null ? databaseManager : new DatabaseManager(plugin);
+        this.ipHistoryTracker = new IpHistoryTracker(plugin, this.databaseManager);
         loadAuthData();
     }
 
@@ -181,7 +188,7 @@ public class PlayerManager {
     }
 
     public boolean isProxyLoopback(String ip) {
-        return ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0") || ip.startsWith("127.");
+        return ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0") || ip.startsWith("127.") || ip.equals("::1") || ip.equalsIgnoreCase("localhost");
     }
 
     public boolean isPotentialDynamicIp(String playerName, String ip) {
@@ -204,7 +211,7 @@ public class PlayerManager {
     private String normalizeIp(String ip) {
         if (ip == null) return null;
         String result = ip.trim();
-        if (result.isEmpty() || result.equals("—") || result.equals("0.0.0.0") || result.equals("127.0.0.1")) {
+        if (result.isEmpty() || result.equals("—") || result.equals("0.0.0.0") || result.equals("127.0.0.1") || result.equals("::1") || result.equalsIgnoreCase("localhost")) {
             return null;
         }
         return result.matches("\\d{1,3}(\\.\\d{1,3}){3}") ? result : null;
@@ -239,3 +246,4 @@ public class PlayerManager {
         }
     }
 }
+
