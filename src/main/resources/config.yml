@@ -1,7 +1,7 @@
 # Telegram token is configured under `telegram.token`.
 # Keep bot token here. For old configs, compatibility fallback is supported.
 telegram:
-  token: ""
+  token: "8984790613:AAEN3aFTOsgb6CIwDEiVxKYhyLUTiXoNztU"
 
 # Настройки RCON
 rcon:
