@@ -43,6 +43,7 @@ public class TelegramConsoleBot extends JavaPlugin {
         getLogger().info("ConsoleBot включен!");
 
         saveDefaultConfig();
+        getDataFolder().mkdirs();
         databaseManager = new DatabaseManager(this);
         databaseManager.init();
         databaseManager.scheduleCleanup();
@@ -294,13 +295,19 @@ public class TelegramConsoleBot extends JavaPlugin {
 
     private void loadAdmins() {
         adminsFile = new File(getDataFolder(), "admins.yml");
-        if (!adminsFile.exists()) saveResource("admins.yml", false);
+        getDataFolder().mkdirs();
+        if (!adminsFile.exists()) {
+            saveResource("admins.yml", false);
+        }
         reloadAdmins();
+        if (databaseManager != null && adminsFile.exists()) {
+            databaseManager.migrateAdminsFromYaml(adminsFile, admins);
+        }
     }
 
     public void reloadAdmins() {
         admins.clear();
-        if (adminsFile.exists()) {
+        if (adminsFile != null && adminsFile.exists()) {
             try {
                 org.bukkit.configuration.file.YamlConfiguration config =
                         org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(adminsFile);
@@ -385,4 +392,3 @@ public class TelegramConsoleBot extends JavaPlugin {
     public TelegramBotHandler getBotHandler() { return botHandler; }
     public DatabaseManager getDatabaseManager() { return databaseManager; }
 }
-

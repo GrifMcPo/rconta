@@ -24,6 +24,7 @@ public class DatabaseManager {
     private final File databaseFile;
     private Connection connection;
     private boolean initialized;
+    private boolean storageAvailable;
 
     public DatabaseManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -32,12 +33,14 @@ public class DatabaseManager {
             plugin.getLogger().warning("Не удалось создать папку данных плагина: " + dataFolder.getAbsolutePath());
         }
         this.databaseFile = new File(dataFolder, "data.db");
+        this.storageAvailable = false;
     }
 
     public synchronized void init() {
         if (initialized && connection != null) {
             try {
                 if (!connection.isClosed()) {
+                    storageAvailable = true;
                     return;
                 }
             } catch (SQLException ignored) {
@@ -45,6 +48,7 @@ public class DatabaseManager {
             }
         }
 
+        storageAvailable = false;
         try {
             Class.forName("org.sqlite.JDBC");
             connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath());
@@ -83,18 +87,38 @@ public class DatabaseManager {
                         + "command TEXT NOT NULL, "
                         + "result TEXT, "
                         + "created_at INTEGER NOT NULL)");
+
+                statement.execute("CREATE TABLE IF NOT EXISTS admins ("
+                        + "uuid TEXT PRIMARY KEY, "
+                        + "name TEXT, "
+                        + "added_by TEXT, "
+                        + "added_at INTEGER NOT NULL)");
+
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
             }
 
             initialized = true;
+            storageAvailable = true;
             plugin.getLogger().info("SQLite database initialized: " + databaseFile.getAbsolutePath());
-        } catch (ClassNotFoundException | SQLException e) {
+        } catch (ClassNotFoundException e) {
+            plugin.getLogger().severe("SQLite JDBC driver not found in classpath; continuing with storage disabled. " + e.getMessage());
+            e.printStackTrace();
+            initialized = false;
+            storageAvailable = false;
+            connection = null;
+        } catch (SQLException e) {
             plugin.getLogger().severe("Ошибка инициализации SQLite: " + e.getMessage());
             e.printStackTrace();
+            initialized = false;
+            storageAvailable = false;
+            connection = null;
         }
     }
 
     public synchronized void close() {
         if (connection == null) {
+            initialized = false;
+            storageAvailable = false;
             return;
         }
 
@@ -106,10 +130,93 @@ public class DatabaseManager {
         } finally {
             connection = null;
             initialized = false;
+            storageAvailable = false;
         }
     }
 
+    public boolean isStorageAvailable() {
+        return storageAvailable;
+    }
+
+    public boolean hasAnyAdminRecords() {
+        if (!storageAvailable || connection == null) {
+            return false;
+        }
+
+        String sql = "SELECT COUNT(*) FROM admins";
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            if (set.next()) {
+                return set.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            logException("hasAnyAdminRecords", e);
+        }
+        return false;
+    }
+
+    public void migrateAdminsFromYaml(File adminsFile, Map<String, String> admins) {
+        if (adminsFile == null || !adminsFile.exists()) {
+            return;
+        }
+        if (!storageAvailable || connection == null) {
+            plugin.getLogger().warning("SQLite storage is not available; skipping admins.yml migration.");
+            return;
+        }
+
+        try {
+            if (!hasAnyAdminRecords()) {
+                int imported = 0;
+                for (Map.Entry<String, String> entry : admins.entrySet()) {
+                    if (entry.getKey() == null || entry.getValue() == null || entry.getValue().trim().isEmpty()) {
+                        continue;
+                    }
+                    String sql = "INSERT OR IGNORE INTO admins(uuid, name, added_by, added_at) VALUES (?, ?, ?, ?)";
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setString(1, entry.getKey());
+                        statement.setString(2, entry.getValue());
+                        statement.setString(3, "migrated-from-admins-yml");
+                        statement.setLong(4, System.currentTimeMillis());
+                        if (statement.executeUpdate() > 0) {
+                            imported++;
+                        }
+                    }
+                }
+                plugin.getLogger().info("Администраторы мигрированы из admins.yml в SQLite: " + imported);
+            }
+
+            File migratedFile = new File(adminsFile.getParentFile(), adminsFile.getName() + ".migrated");
+            if (!migratedFile.exists()) {
+                if (adminsFile.renameTo(migratedFile)) {
+                    plugin.getLogger().info("admins.yml перенесён в admins.yml.migrated после миграции в SQLite");
+                } else {
+                    plugin.getLogger().warning("Не удалось переименовать admins.yml в admins.yml.migrated");
+                }
+            }
+        } catch (Exception e) {
+            logException("migrateAdminsFromYaml", e);
+        }
+    }
+
+    public synchronized boolean ensureConnection() {
+        try {
+            if (connection == null || connection.isClosed()) {
+                init();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Ошибка проверки соединения SQLite: " + e.getMessage());
+            connection = null;
+            initialized = false;
+            storageAvailable = false;
+            return false;
+        }
+        return connection != null && storageAvailable;
+    }
+
     public void scheduleCleanup() {
+        if (!storageAvailable) {
+            return;
+        }
         long periodTicks = 20L * 60L * 60L * 24L;
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::cleanupExpiredDataInternal, periodTicks, periodTicks);
     }
@@ -142,8 +249,8 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Boolean> addPunishment(UUID targetUuid, String targetName, String type,
-                                                     String reason, String operator, long expiresAt,
-                                                     String ipAddress, String source) {
+                                                      String reason, String operator, long expiresAt,
+                                                      String ipAddress, String source) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -503,20 +610,6 @@ public class DatabaseManager {
         } catch (SQLException e) {
             logException("cleanupExpiredDataInternal", e);
         }
-    }
-
-    private synchronized boolean ensureConnection() {
-        try {
-            if (connection == null || connection.isClosed()) {
-                init();
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Ошибка проверки соединения SQLite: " + e.getMessage());
-            connection = null;
-            initialized = false;
-            return false;
-        }
-        return connection != null;
     }
 
     private long getCutoffTime(int days) {
