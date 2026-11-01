@@ -22,6 +22,7 @@ public class DatabaseManager {
 
     private final JavaPlugin plugin;
     private final File databaseFile;
+    private final Map<String, List<Map<String, Object>>> activePunishmentCache = new HashMap<>();
     private Connection connection;
     private boolean initialized;
     private boolean storageAvailable;
@@ -34,6 +35,42 @@ public class DatabaseManager {
         }
         this.databaseFile = new File(dataFolder, "data.db");
         this.storageAvailable = false;
+    }
+
+    public synchronized void loadActivePunishmentCache() {
+        activePunishmentCache.clear();
+        if (!ensureConnection()) {
+            return;
+        }
+
+        List<Map<String, Object>> rows = getAllActivePunishmentsSync();
+        for (Map<String, Object> row : rows) {
+            String targetName = (String) row.get("target_name");
+            if (targetName == null || targetName.trim().isEmpty()) {
+                continue;
+            }
+            activePunishmentCache.computeIfAbsent(targetName.toLowerCase(), key -> new ArrayList<>()).add(row);
+        }
+        plugin.getLogger().info("Loaded active punishment cache entries: " + activePunishmentCache.size());
+    }
+
+    public synchronized List<Map<String, Object>> getCachedActivePunishments(String targetName) {
+        if (targetName == null || targetName.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Map<String, Object>> cached = activePunishmentCache.get(targetName.toLowerCase());
+        return cached == null ? new ArrayList<>() : new ArrayList<>(cached);
+    }
+
+    public synchronized void invalidateActivePunishmentCache(String targetName) {
+        if (targetName == null || targetName.trim().isEmpty()) {
+            return;
+        }
+        activePunishmentCache.remove(targetName.toLowerCase());
+    }
+
+    public synchronized void invalidateAllActivePunishmentCache() {
+        activePunishmentCache.clear();
     }
 
     public synchronized void init() {
@@ -254,7 +291,11 @@ public class DatabaseManager {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source));
+                boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source);
+                if (success) {
+                    invalidateActivePunishmentCache(targetName);
+                }
+                future.complete(success);
             } catch (Exception e) {
                 logException("addPunishment", e);
                 future.complete(false);
@@ -267,7 +308,11 @@ public class DatabaseManager {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                future.complete(deactivatePunishmentInternal(name, type));
+                boolean success = deactivatePunishmentInternal(name, type);
+                if (success) {
+                    invalidateActivePunishmentCache(name);
+                }
+                future.complete(success);
             } catch (Exception e) {
                 logException("deactivatePunishment", e);
                 future.complete(false);
@@ -287,6 +332,73 @@ public class DatabaseManager {
             }
         });
         return future;
+    }
+
+    public List<Map<String, Object>> getAllActivePunishmentsSync() {
+        if (!ensureConnection()) {
+            return new ArrayList<>();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        String sql = "SELECT id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source "
+                + "FROM punishments WHERE active = 1 ORDER BY created_at DESC";
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            while (set.next()) {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", set.getLong("id"));
+                row.put("target_uuid", set.getString("target_uuid"));
+                row.put("target_name", set.getString("target_name"));
+                row.put("type", set.getString("type"));
+                row.put("reason", set.getString("reason"));
+                row.put("operator", set.getString("operator"));
+                row.put("created_at", set.getLong("created_at"));
+                row.put("expires_at", set.getLong("expires_at"));
+                row.put("active", set.getInt("active"));
+                row.put("ip_address", set.getString("ip_address"));
+                row.put("source", set.getString("source"));
+                result.add(row);
+            }
+        } catch (SQLException e) {
+            logException("getAllActivePunishmentsSync", e);
+        }
+        return result;
+    }
+
+    public List<Map<String, Object>> getPunishmentsByTarget(String targetName, int limit) {
+        if (!ensureConnection()) {
+            return new ArrayList<>();
+        }
+        if (targetName == null) {
+            return new ArrayList<>();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        String sql = "SELECT * FROM punishments WHERE target_name = ? ORDER BY created_at DESC LIMIT ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, targetName);
+            statement.setInt(2, Math.max(1, limit));
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", set.getLong("id"));
+                    row.put("target_uuid", set.getString("target_uuid"));
+                    row.put("target_name", set.getString("target_name"));
+                    row.put("type", set.getString("type"));
+                    row.put("reason", set.getString("reason"));
+                    row.put("operator", set.getString("operator"));
+                    row.put("created_at", set.getLong("created_at"));
+                    row.put("expires_at", set.getLong("expires_at"));
+                    row.put("active", set.getInt("active"));
+                    row.put("ip_address", set.getString("ip_address"));
+                    row.put("source", set.getString("source"));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            logException("getPunishmentsByTarget", e);
+        }
+        return result;
     }
 
     public CompletableFuture<Boolean> isIpBanned(String ip) {
