@@ -9,6 +9,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -34,6 +36,7 @@ public class DatabaseManager {
 
     private final JavaPlugin plugin;
     private final File databaseFile;
+    private final File sqliteLegacyFile;
     private final Map<String, List<Map<String, Object>>> activePunishmentCache = new HashMap<>();
     private Connection connection;
     private boolean initialized;
@@ -46,7 +49,8 @@ public class DatabaseManager {
         if (!dataFolder.exists() && !dataFolder.mkdirs()) {
             plugin.getLogger().warning("Не удалось создать папку данных плагина: " + dataFolder.getAbsolutePath());
         }
-        this.databaseFile = new File(dataFolder, "data.db");
+        this.databaseFile = new File(dataFolder, "data.mv.db");
+        this.sqliteLegacyFile = new File(dataFolder, "data.db");
         this.storageAvailable = false;
     }
 
@@ -90,7 +94,7 @@ public class DatabaseManager {
             try {
                 if (!connection.isClosed()) {
                     storageAvailable = true;
-                    plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
+                    plugin.getLogger().info("H2 init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
                     return;
                 }
             } catch (SQLException ignored) {
@@ -98,105 +102,55 @@ public class DatabaseManager {
         }
 
         storageAvailable = false;
-        boolean createdThisRun = !databaseFile.exists();
         try {
-            plugin.getLogger().info("SQLite init: opening connection to " + databaseFile.getAbsolutePath());
-            Class.forName("org.sqlite.JDBC");
-            connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath());
-            if (createdThisRun) {
-                plugin.getLogger().info("Created new database");
-            } else {
-                plugin.getLogger().info("Opened existing database");
+            plugin.getLogger().info("H2 init: opening connection to " + getJdbcUrl());
+            Class.forName("org.h2.Driver");
+            connection = DriverManager.getConnection(getJdbcUrl());
+            plugin.getLogger().info("H2 init: connection opened");
+
+            boolean shouldMigrateSqlite = sqliteLegacyFile.exists() && !databaseFile.exists();
+            if (shouldMigrateSqlite) {
+                plugin.getLogger().info("H2 init: detected legacy SQLite database");
+                migrateSqliteToH2();
+            } else if (databaseFile.exists()) {
+                plugin.getLogger().info("H2 already exists, skipping migration");
             }
 
-            try (Statement statement = connection.createStatement()) {
-                plugin.getLogger().info("SQLite init: applying PRAGMA journal_mode=WAL");
-                statement.execute("PRAGMA journal_mode=WAL;");
-                plugin.getLogger().info("SQLite init: applying PRAGMA foreign_keys=ON");
-                statement.execute("PRAGMA foreign_keys=ON;");
-                plugin.getLogger().info("SQLite init: applying PRAGMA busy_timeout=5000");
-                statement.execute("PRAGMA busy_timeout = 5000;");
-                initializeSchema(statement);
-            }
-
+            createCoreTables();
             initialized = true;
             storageAvailable = true;
-            plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
+            verifySchema();
+            migrateLegacyHistoryIfNeeded();
+            migrateLegacyCommandLogsIfNeeded();
+            plugin.getLogger().info("H2 init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
         } catch (ClassNotFoundException e) {
-            plugin.getLogger().log(Level.SEVERE, "SQLite JDBC driver not found in classpath; continuing with storage disabled.", e);
+            plugin.getLogger().log(Level.SEVERE, "H2 JDBC driver not found in classpath; continuing with storage disabled.", e);
             initialized = false;
             storageAvailable = false;
             connection = null;
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Ошибка инициализации SQLite.", e);
+            plugin.getLogger().log(Level.SEVERE, "Ошибка инициализации H2.", e);
             initialized = false;
             storageAvailable = false;
             connection = null;
         }
     }
 
-    private void initializeSchema(Statement statement) throws SQLException {
-        plugin.getLogger().info("SQLite init: creating table punishments");
-        statement.execute("CREATE TABLE IF NOT EXISTS punishments ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "target_uuid TEXT, "
-                + "target_name TEXT NOT NULL, "
-                + "type TEXT NOT NULL, "
-                + "reason TEXT, "
-                + "operator TEXT NOT NULL, "
-                + "created_at INTEGER NOT NULL, "
-                + "expires_at INTEGER DEFAULT 0, "
-                + "active INTEGER DEFAULT 1, "
-                + "ip_address TEXT, "
-                + "source TEXT DEFAULT 'manual')");
-
-        plugin.getLogger().info("SQLite init: creating table ip_history");
-        statement.execute("CREATE TABLE IF NOT EXISTS ip_history ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "player_uuid TEXT NOT NULL, "
-                + "player_name TEXT NOT NULL, "
-                + "ip_address TEXT NOT NULL, "
-                + "seen_at INTEGER NOT NULL)");
-
-        plugin.getLogger().info("SQLite init: creating index idx_ip_history_uuid");
-        statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_uuid ON ip_history(player_uuid, seen_at)");
-        plugin.getLogger().info("SQLite init: creating index idx_ip_history_ip");
-        statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_ip ON ip_history(ip_address, seen_at)");
-
-        plugin.getLogger().info("SQLite init: creating table command_logs");
-        statement.execute("CREATE TABLE IF NOT EXISTS command_logs ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "executor TEXT NOT NULL, "
-                + "command TEXT NOT NULL, "
-                + "result TEXT, "
-                + "created_at INTEGER NOT NULL)");
-
-        plugin.getLogger().info("SQLite init: creating table admins");
-        statement.execute("CREATE TABLE IF NOT EXISTS admins ("
-                + "uuid TEXT PRIMARY KEY, "
-                + "name TEXT, "
-                + "added_by TEXT, "
-                + "added_at INTEGER NOT NULL)");
-
-        plugin.getLogger().info("SQLite init: creating index idx_admins_name");
-        statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
-    }
-
     public synchronized void verifySchema() {
-        init();
         if (connection == null || !storageAvailable) {
             plugin.getLogger().severe("Schema verify: storage unavailable, no DB tables checked");
             return;
         }
 
         List<String> found = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' ORDER BY TABLE_NAME");
              ResultSet resultSet = statement.executeQuery()) {
             while (resultSet.next()) {
-                found.add(resultSet.getString("name"));
+                found.add(resultSet.getString("TABLE_NAME").toLowerCase());
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Schema verify failed while querying sqlite_master.", e);
+            plugin.getLogger().log(Level.SEVERE, "Schema verify failed while querying INFORMATION_SCHEMA.TABLES.", e);
             storageAvailable = false;
             return;
         }
@@ -213,17 +167,14 @@ public class DatabaseManager {
         plugin.getLogger().info("Schema verify: expected=" + expected + ", found=" + foundCount + ", missing=" + missing);
 
         if (!missing.isEmpty()) {
-            plugin.getLogger().severe("Missing SQLite tables: " + missing + ". Recreating schema.");
-            try (Statement statement = connection.createStatement()) {
-                initializeSchema(statement);
-            } catch (SQLException sqlEx) {
-                plugin.getLogger().log(Level.SEVERE, "Failed to recreate missing SQLite schema.", sqlEx);
+            plugin.getLogger().log(Level.SEVERE, "Missing H2 tables: " + missing + ". Attempting CREATE TABLE IF NOT EXISTS.", new RuntimeException("schema-missing"));
+            try {
+                createCoreTables();
+            } catch (Exception ex) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to recreate missing H2 tables.", ex);
                 storageAvailable = false;
-                return;
             }
-            storageAvailable = true;
         }
-        plugin.getLogger().info("Storage ready");
     }
 
     public synchronized void startPeriodicStorageAudit() {
@@ -233,7 +184,7 @@ public class DatabaseManager {
         storageAuditStarted = true;
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             if (!ensureConnection()) {
-                plugin.getLogger().warning("STORAGE CHECK: SQLite unavailable. validation=failed");
+                plugin.getLogger().warning("STORAGE CHECK: H2 unavailable. validation=failed");
                 return;
             }
 
@@ -261,9 +212,9 @@ public class DatabaseManager {
 
         try {
             connection.close();
-            plugin.getLogger().info("SQLite connection closed: " + databaseFile.getAbsolutePath());
+            plugin.getLogger().info("H2 connection closed: " + databaseFile.getAbsolutePath());
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Ошибка закрытия SQLite.", e);
+            plugin.getLogger().log(Level.SEVERE, "Ошибка закрытия H2.", e);
         } finally {
             connection = null;
             initialized = false;
@@ -297,7 +248,7 @@ public class DatabaseManager {
             return;
         }
         if (!storageAvailable || connection == null) {
-            plugin.getLogger().warning("SQLite storage is not available; skipping admins.yml migration.");
+            plugin.getLogger().warning("Storage is not available; skipping admins.yml migration.");
             return;
         }
 
@@ -308,7 +259,7 @@ public class DatabaseManager {
                     if (entry.getKey() == null || entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                         continue;
                     }
-                    String sql = "INSERT OR IGNORE INTO admins(uuid, name, added_by, added_at) VALUES (?, ?, ?, ?)";
+                    String sql = "MERGE INTO admins KEY(uuid) VALUES (?, ?, ?, ?)";
                     try (PreparedStatement statement = connection.prepareStatement(sql)) {
                         statement.setString(1, entry.getKey());
                         statement.setString(2, entry.getValue());
@@ -321,16 +272,12 @@ public class DatabaseManager {
                 }
                 plugin.getLogger().info("Migrated admins.yml: " + imported + " entries");
             } else {
-                plugin.getLogger().info("Skipped migration admins.yml: table not empty");
+                plugin.getLogger().info("Skipped migration: table not empty");
             }
 
             File migratedFile = new File(adminsFile.getParentFile(), adminsFile.getName() + ".migrated");
-            if (!migratedFile.exists()) {
-                if (adminsFile.renameTo(migratedFile)) {
-                    plugin.getLogger().info("admins.yml renamed to admins.yml.migrated");
-                } else {
-                    plugin.getLogger().warning("Не удалось переименовать admins.yml в admins.yml.migrated");
-                }
+            if (!migratedFile.exists() && adminsFile.renameTo(migratedFile)) {
+                plugin.getLogger().info("admins.yml renamed to admins.yml.migrated");
             }
         } catch (Exception e) {
             logException("migrateAdminsFromYaml", e);
@@ -343,7 +290,7 @@ public class DatabaseManager {
                 init();
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Ошибка проверки соединения SQLite.", e);
+            plugin.getLogger().log(Level.SEVERE, "Ошибка проверки соединения H2.", e);
             connection = null;
             initialized = false;
             storageAvailable = false;
@@ -397,34 +344,22 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Boolean> addPunishment(UUID targetUuid, String targetName, String type,
-                                                      String reason, String operator, long expiresAt,
-                                                      String ipAddress, String source) {
+                                                    String reason, String operator, long expiresAt,
+                                                    String ipAddress, String source) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
-        plugin.getLogger().info("[trace] addPunishment entered: name=" + targetName + ", type=" + type + ", storageAvailable=" + storageAvailable);
         if (!storageAvailable) {
             plugin.getLogger().warning("DatabaseManager.addPunishment: storage unavailable, returning false");
-            future.complete(false);
-            return future;
-        }
-        if (targetName == null || targetName.trim().isEmpty()) {
-            plugin.getLogger().warning("DatabaseManager.addPunishment: targetName is null/empty, returning false");
-            future.complete(false);
-            return future;
-        }
-        if (targetUuid == null) {
-            plugin.getLogger().warning("DatabaseManager.addPunishment: targetUuid is null for target=" + targetName + ", returning false");
             future.complete(false);
             return future;
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 long createdAt = System.currentTimeMillis();
-                plugin.getLogger().info("[trace] addPunishment SQL: INSERT INTO punishments (...) target=" + targetName + ", type=" + type + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
                 boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source, createdAt);
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
                     boolean verified = verifyRecentPunishmentWrite(targetName, type, createdAt);
-                    plugin.getLogger().info("Punishment inserted: id=?, type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + ", verified=" + verified + ", createdAt=" + createdAt);
+                    plugin.getLogger().info("Punishment inserted: type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + ", verified=" + verified + ", createdAt=" + createdAt);
                     if (!verified) {
                         plugin.getLogger().warning("STORAGE CHECK FAIL: punishment not visible after insert. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
                     }
@@ -433,7 +368,7 @@ public class DatabaseManager {
                 }
                 future.complete(success);
             } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "DatabaseManager.addPunishment failed.", e);
+                logException("addPunishment", e);
                 future.complete(false);
             }
         });
@@ -453,7 +388,6 @@ public class DatabaseManager {
                 if (success) {
                     invalidateActivePunishmentCache(name);
                 }
-                plugin.getLogger().fine("deactivatePunishment: name=" + name + ", type=" + type + ", result=" + success);
                 future.complete(success);
             } catch (Exception e) {
                 logException("deactivatePunishment", e);
@@ -473,7 +407,6 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 List<Map<String, Object>> rows = getActivePunishmentsInternal(name);
-                plugin.getLogger().fine("getActivePunishments: name=" + name + ", rows=" + rows.size());
                 future.complete(rows);
             } catch (Exception e) {
                 logException("getActivePunishments", e);
@@ -489,8 +422,7 @@ public class DatabaseManager {
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        String sql = "SELECT id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source "
-                + "FROM punishments WHERE active = 1 ORDER BY created_at DESC";
+        String sql = "SELECT id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source FROM punishments WHERE active = 1 ORDER BY created_at DESC";
         try (PreparedStatement statement = connection.prepareStatement(sql);
              ResultSet set = statement.executeQuery()) {
             while (set.next()) {
@@ -596,7 +528,6 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 boolean result = isIpBannedInternal(ip);
-                plugin.getLogger().fine("isIpBanned: ip=" + ip + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("isIpBanned", e);
@@ -616,7 +547,6 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 List<String> result = getRecentIpsInternal(uuid, days);
-                plugin.getLogger().fine("getRecentIps: uuid=" + uuid + ", days=" + days + ", rows=" + result.size());
                 future.complete(result);
             } catch (Exception e) {
                 logException("getRecentIps", e);
@@ -636,7 +566,6 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int result = countDistinctIpsInternal(uuid, days);
-                plugin.getLogger().fine("countDistinctIps: uuid=" + uuid + ", days=" + days + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctIps", e);
@@ -656,7 +585,6 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int result = countDistinctUuidsForIpInternal(ip, days);
-                plugin.getLogger().fine("countDistinctUuidsForIp: ip=" + ip + ", days=" + days + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctUuidsForIp", e);
@@ -678,7 +606,6 @@ public class DatabaseManager {
                 long createdAt = System.currentTimeMillis();
                 boolean success = logCommandInternal(executor, command, result, createdAt);
                 boolean verified = success && verifyRecentCommandWrite(executor, command, createdAt);
-                plugin.getLogger().fine("logCommand: executor=" + executor + ", command=" + command + ", result=" + result + ", success=" + success + ", verified=" + verified + ", createdAt=" + createdAt);
                 future.complete(success && verified);
             } catch (Exception e) {
                 logException("logCommand", e);
@@ -713,6 +640,278 @@ public class DatabaseManager {
             logException("getCommandLogs", e);
         }
         return result;
+    }
+
+    public List<Map<String, Object>> getBaseBans(int limit) {
+        if (!storageAvailable) {
+            return new ArrayList<>();
+        }
+        String sql = "SELECT * FROM punishments ORDER BY created_at DESC LIMIT ?";
+        List<Map<String, Object>> result = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    result.add(mapRow(set));
+                }
+            }
+        } catch (SQLException e) {
+            logException("getBaseBans", e);
+        }
+        return result;
+    }
+
+    public List<Map<String, Object>> getBaseIpHistory(String playerName, int limit) {
+        if (!storageAvailable) {
+            return new ArrayList<>();
+        }
+        String sql = "SELECT * FROM ip_history WHERE player_name = ? ORDER BY seen_at DESC LIMIT ?";
+        List<Map<String, Object>> result = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, playerName == null ? "" : playerName);
+            statement.setInt(2, Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
+            try (ResultSet set = statement.executeQuery()) {
+                while (set.next()) {
+                    result.add(ipHistoryRow(set));
+                }
+            }
+        } catch (SQLException e) {
+            logException("getBaseIpHistory", e);
+        }
+        return result;
+    }
+
+    public List<Map<String, Object>> getBaseLogs(int limit) {
+        return getCommandLogs(Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
+    }
+
+    public List<Map<String, Object>> getAdminsRows() {
+        if (!storageAvailable) {
+            return new ArrayList<>();
+        }
+        String sql = "SELECT * FROM admins ORDER BY added_at DESC";
+        List<Map<String, Object>> result = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            while (set.next()) {
+                Map<String, Object> row = new HashMap<>();
+                row.put("uuid", set.getString("uuid"));
+                row.put("name", set.getString("name"));
+                row.put("added_by", set.getString("added_by"));
+                row.put("added_at", set.getLong("added_at"));
+                result.add(row);
+            }
+        } catch (SQLException e) {
+            logException("getAdminsRows", e);
+        }
+        return result;
+    }
+
+    public boolean checkpointSync() {
+        if (!storageAvailable || connection == null) {
+            return false;
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CHECKPOINT SYNC");
+            return true;
+        } catch (SQLException e) {
+            logException("checkpointSync", e);
+            return false;
+        }
+    }
+
+    private String getJdbcUrl() {
+        return "jdbc:h2:file:" + plugin.getDataFolder().getAbsolutePath() + File.separator + "data;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE";
+    }
+
+    private void createCoreTables() throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            plugin.getLogger().info("H2 init: creating table punishments");
+            statement.execute("CREATE TABLE IF NOT EXISTS punishments ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "target_uuid VARCHAR(64), "
+                    + "target_name VARCHAR(128) NOT NULL, "
+                    + "type VARCHAR(32) NOT NULL, "
+                    + "reason CLOB, "
+                    + "operator VARCHAR(128) NOT NULL, "
+                    + "created_at BIGINT NOT NULL, "
+                    + "expires_at BIGINT DEFAULT 0, "
+                    + "active BOOLEAN DEFAULT TRUE, "
+                    + "ip_address VARCHAR(45), "
+                    + "source VARCHAR(128) DEFAULT 'manual')");
+
+            plugin.getLogger().info("H2 init: creating table ip_history");
+            statement.execute("CREATE TABLE IF NOT EXISTS ip_history ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "player_uuid VARCHAR(64) NOT NULL, "
+                    + "player_name VARCHAR(128) NOT NULL, "
+                    + "ip_address VARCHAR(45) NOT NULL, "
+                    + "seen_at BIGINT NOT NULL)");
+
+            plugin.getLogger().info("H2 init: creating index idx_ip_history_player");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_player ON ip_history(player_uuid, seen_at)");
+            plugin.getLogger().info("H2 init: creating index idx_ip_history_ip");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_ip ON ip_history(ip_address, seen_at)");
+
+            plugin.getLogger().info("H2 init: creating table command_logs");
+            statement.execute("CREATE TABLE IF NOT EXISTS command_logs ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "executor VARCHAR(128) NOT NULL, "
+                    + "command CLOB NOT NULL, "
+                    + "result CLOB, "
+                    + "created_at BIGINT NOT NULL)");
+
+            plugin.getLogger().info("H2 init: creating table admins");
+            statement.execute("CREATE TABLE IF NOT EXISTS admins ("
+                    + "uuid VARCHAR(64) PRIMARY KEY, "
+                    + "name VARCHAR(128), "
+                    + "added_by VARCHAR(128), "
+                    + "added_at BIGINT NOT NULL)");
+
+            plugin.getLogger().info("H2 init: creating index idx_admins_name");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
+        }
+    }
+
+    private void migrateSqliteToH2() {
+        File sqliteFile = sqliteLegacyFile;
+        if (!sqliteFile.exists()) {
+            return;
+        }
+        try (Connection sqlite = DriverManager.getConnection("jdbc:sqlite:" + sqliteFile.getAbsolutePath())) {
+            int punishments = copyTable(sqlite, "punishments", "punishments", true);
+            int ipHistory = copyTable(sqlite, "ip_history", "ip_history", false);
+            int commandLogs = copyTable(sqlite, "command_logs", "command_logs", false);
+            int admins = copyTable(sqlite, "admins", "admins", false);
+            plugin.getLogger().info("Migrated SQLite → H2: punishments=" + punishments + ", ip_history=" + ipHistory + ", command_logs=" + commandLogs + ", admins=" + admins);
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Error migrating SQLite to H2.", e);
+            return;
+        }
+
+        File migrated = new File(sqliteFile.getParentFile(), sqliteFile.getName() + ".migrated");
+        if (!migrated.exists()) {
+            try {
+                Files.move(sqliteFile.toPath(), migrated.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                plugin.getLogger().info("data.db renamed to data.db.migrated");
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to rename SQLite file to .migrated.", e);
+            }
+        }
+    }
+
+    private int copyTable(Connection sqlite, String sourceTable, String targetTable, boolean includeId) {
+        if (connection == null) {
+            return 0;
+        }
+        try {
+            String sql = "SELECT * FROM " + sourceTable;
+            List<Map<String, Object>> rows = new ArrayList<>();
+            try (PreparedStatement ps = sqlite.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+                        String column = rs.getMetaData().getColumnName(i);
+                        row.put(column, rs.getObject(i));
+                    }
+                    rows.add(row);
+                }
+            }
+            for (Map<String, Object> row : rows) {
+                if (targetTable.equals("punishments")) {
+                    insertPunishmentRow(row);
+                } else if (targetTable.equals("ip_history")) {
+                    insertIpHistoryRow(row);
+                } else if (targetTable.equals("command_logs")) {
+                    insertCommandLogRow(row);
+                } else if (targetTable.equals("admins")) {
+                    insertAdminRow(row);
+                }
+            }
+            return rows.size();
+        } catch (SQLException e) {
+            logException("copyTable(" + sourceTable + ")", e);
+            return 0;
+        }
+    }
+
+    private void insertPunishmentRow(Map<String, Object> row) throws SQLException {
+        String sql = "MERGE INTO punishments KEY(id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(2, row.get("target_uuid"));
+            ps.setObject(3, row.get("target_name"));
+            ps.setObject(4, row.get("type"));
+            ps.setObject(5, row.get("reason"));
+            ps.setObject(6, row.get("operator"));
+            ps.setObject(7, row.get("created_at"));
+            ps.setObject(8, row.get("expires_at"));
+            ps.setObject(9, row.get("active"));
+            ps.setObject(10, row.get("ip_address"));
+            ps.setObject(11, row.get("source"));
+            ps.executeUpdate();
+        }
+    }
+
+    private void insertIpHistoryRow(Map<String, Object> row) throws SQLException {
+        String sql = "MERGE INTO ip_history KEY(id) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(2, row.get("player_uuid"));
+            ps.setObject(3, row.get("player_name"));
+            ps.setObject(4, row.get("ip_address"));
+            ps.setObject(5, row.get("seen_at"));
+            ps.executeUpdate();
+        }
+    }
+
+    private void insertCommandLogRow(Map<String, Object> row) throws SQLException {
+        String sql = "MERGE INTO command_logs KEY(id) VALUES (?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(2, row.get("executor"));
+            ps.setObject(3, row.get("command"));
+            ps.setObject(4, row.get("result"));
+            ps.setObject(5, row.get("created_at"));
+            ps.executeUpdate();
+        }
+    }
+
+    private void insertAdminRow(Map<String, Object> row) throws SQLException {
+        String sql = "MERGE INTO admins KEY(uuid) VALUES (?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setObject(1, row.get("uuid"));
+            ps.setObject(2, row.get("name"));
+            ps.setObject(3, row.get("added_by"));
+            ps.setObject(4, row.get("added_at"));
+            ps.executeUpdate();
+        }
+    }
+
+    private Map<String, Object> mapRow(ResultSet set) throws SQLException {
+        Map<String, Object> row = new HashMap<>();
+        row.put("id", set.getLong("id"));
+        row.put("target_uuid", set.getString("target_uuid"));
+        row.put("target_name", set.getString("target_name"));
+        row.put("type", set.getString("type"));
+        row.put("reason", set.getString("reason"));
+        row.put("operator", set.getString("operator"));
+        row.put("created_at", set.getLong("created_at"));
+        row.put("expires_at", set.getLong("expires_at"));
+        row.put("active", set.getInt("active"));
+        row.put("ip_address", set.getString("ip_address"));
+        row.put("source", set.getString("source"));
+        return row;
+    }
+
+    private Map<String, Object> ipHistoryRow(ResultSet set) throws SQLException {
+        Map<String, Object> row = new HashMap<>();
+        row.put("id", set.getLong("id"));
+        row.put("player_uuid", set.getString("player_uuid"));
+        row.put("player_name", set.getString("player_name"));
+        row.put("ip_address", set.getString("ip_address"));
+        row.put("seen_at", set.getLong("seen_at"));
+        return row;
     }
 
     private synchronized boolean recordIpInternal(UUID uuid, String playerName, String ip, long createdAt) {
@@ -760,9 +959,8 @@ public class DatabaseManager {
             return false;
         }
 
-        String sql = "INSERT INTO punishments(target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        String sql = "INSERT INTO punishments(target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, targetUuid == null ? null : targetUuid.toString());
             statement.setString(2, targetName);
             statement.setString(3, type);
@@ -772,19 +970,11 @@ public class DatabaseManager {
             statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
             statement.setString(8, ipAddress);
             statement.setString(9, source == null || source.trim().isEmpty() ? "manual" : source);
-            int affected = statement.executeUpdate();
-            if (affected <= 0) {
-                return false;
+            boolean result = statement.executeUpdate() > 0;
+            if (result) {
+                plugin.getLogger().info("Punishment inserted: target=" + targetName + ", type=" + type + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
             }
-            try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    long insertedId = generatedKeys.getLong(1);
-                    plugin.getLogger().info("[trace] addPunishment inserted: id=" + insertedId + ", target=" + targetName + ", type=" + type);
-                    plugin.getLogger().info("DatabaseManager.addPunishment: inserted id=" + insertedId + ", type=" + type + ", target=" + targetName + ", createdAt=" + createdAt);
-                    return true;
-                }
-            }
-            return true;
+            return result;
         } catch (SQLException e) {
             logException("addPunishmentInternal", e);
             return false;
@@ -796,7 +986,7 @@ public class DatabaseManager {
             return false;
         }
 
-        String sql = "UPDATE punishments SET active = 0 WHERE target_name = ? AND type = ? AND active = 1";
+        String sql = "UPDATE punishments SET active = FALSE WHERE target_name = ? AND type = ? AND active = TRUE";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, name);
             statement.setString(2, type);
@@ -813,8 +1003,7 @@ public class DatabaseManager {
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        String sql = "SELECT id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source "
-                + "FROM punishments WHERE target_name = ? AND active = 1 ORDER BY created_at DESC";
+        String sql = "SELECT id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source FROM punishments WHERE target_name = ? AND active = TRUE ORDER BY created_at DESC";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, name);
             try (ResultSet set = statement.executeQuery()) {
@@ -850,7 +1039,7 @@ public class DatabaseManager {
             return false;
         }
 
-        String sql = "SELECT COUNT(*) FROM punishments WHERE active = 1 AND ip_address = ? AND (expires_at = 0 OR expires_at > ?)";
+        String sql = "SELECT COUNT(*) FROM punishments WHERE active = TRUE AND ip_address = ? AND (expires_at = 0 OR expires_at > ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, normalizedIp);
             statement.setLong(2, System.currentTimeMillis());
@@ -946,7 +1135,7 @@ public class DatabaseManager {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, executor == null ? "unknown" : executor);
             statement.setString(2, command == null ? "" : command);
-            statement.setString(3, result);
+            statement.setString(3, result == null ? "" : result);
             statement.setLong(4, createdAt);
             return statement.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -979,7 +1168,7 @@ public class DatabaseManager {
             }
 
             try (PreparedStatement deactivatePunishments = connection.prepareStatement(
-                    "UPDATE punishments SET active = 0 WHERE active = 1 AND expires_at > 0 AND expires_at <= ?")) {
+                    "UPDATE punishments SET active = FALSE WHERE active = TRUE AND expires_at > 0 AND expires_at <= ?")) {
                 deactivatePunishments.setLong(1, now);
                 deactivatePunishments.executeUpdate();
             }
@@ -998,7 +1187,7 @@ public class DatabaseManager {
         }
         if (rowCount("punishments") > 0) {
             renameLegacyFile(historyFile, "history.yml.migrated");
-            plugin.getLogger().info("Skipped migration history.yml: table not empty");
+            plugin.getLogger().info("Skipped migration: table not empty");
             return;
         }
 
@@ -1034,7 +1223,7 @@ public class DatabaseManager {
                         statement.setString(5, operator);
                         statement.setLong(6, createdAt);
                         statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
-                        statement.setInt(8, active ? 1 : 0);
+                        statement.setBoolean(8, active);
                         statement.setString(9, null);
                         statement.setString(10, "migrated-from-history-yml");
                         statement.executeUpdate();
@@ -1043,7 +1232,7 @@ public class DatabaseManager {
                 }
             }
             if (imported > 0) {
-                plugin.getLogger().info("Migrated history.yml: " + imported + " entries");
+                plugin.getLogger().info("Migrated history.yml to punishments: " + imported + " entries");
             }
             renameLegacyFile(historyFile, "history.yml.migrated");
         } catch (Exception e) {
@@ -1067,7 +1256,7 @@ public class DatabaseManager {
             for (File file : files) {
                 renameLegacyFile(file, file.getName() + ".migrated");
             }
-            plugin.getLogger().info("Skipped migration logs_*.txt: table not empty");
+            plugin.getLogger().info("Skipped migration: table not empty");
             return;
         }
 
@@ -1110,7 +1299,7 @@ public class DatabaseManager {
             renameLegacyFile(file, file.getName() + ".migrated");
         }
         if (imported > 0) {
-            plugin.getLogger().info("Migrated logs_*.txt: " + imported + " entries");
+            plugin.getLogger().info("Migrated logs_*.txt to command_logs: " + imported + " entries");
         }
     }
 
