@@ -30,6 +30,7 @@ public class DatabaseManager {
     private static final List<String> EXPECTED_TABLES = Arrays.asList(
             "punishments", "ip_history", "command_logs", "admins"
     );
+    private static final long STORAGE_AUDIT_PERIOD_MS = 30_000L;
 
     private final JavaPlugin plugin;
     private final File databaseFile;
@@ -37,6 +38,7 @@ public class DatabaseManager {
     private Connection connection;
     private boolean initialized;
     private boolean storageAvailable;
+    private boolean storageAuditStarted;
 
     public DatabaseManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -209,6 +211,32 @@ public class DatabaseManager {
         }
     }
 
+    public synchronized void startPeriodicStorageAudit() {
+        if (storageAuditStarted) {
+            return;
+        }
+        storageAuditStarted = true;
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            if (!ensureConnection()) {
+                plugin.getLogger().warning("STORAGE CHECK: SQLite unavailable. validation=failed");
+                return;
+            }
+
+            int punishments = countRows("punishments");
+            int activePunishments = countRowsWhere("punishments", "active = 1");
+            int ipHistory = countRows("ip_history");
+            int commandLogs = countRows("command_logs");
+            int admins = countRows("admins");
+
+            plugin.getLogger().info("STORAGE CHECK OK: punishments=" + punishments
+                    + ", active=" + activePunishments
+                    + ", ip_history=" + ipHistory
+                    + ", command_logs=" + commandLogs
+                    + ", admins=" + admins
+                    + ", interval_ms=" + STORAGE_AUDIT_PERIOD_MS);
+        }, STORAGE_AUDIT_PERIOD_MS / 50L, STORAGE_AUDIT_PERIOD_MS / 50L);
+    }
+
     public synchronized void close() {
         if (connection == null) {
             initialized = false;
@@ -340,9 +368,11 @@ public class DatabaseManager {
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                boolean result = recordIpInternal(uuid, playerName, ip);
-                plugin.getLogger().fine("recordIp: name=" + playerName + ", ip=" + ip + ", result=" + result);
-                future.complete(result);
+                long createdAt = System.currentTimeMillis();
+                boolean result = recordIpInternal(uuid, playerName, ip, createdAt);
+                boolean verified = result && verifyRecentIpWrite(uuid, normalizeIp(ip), createdAt);
+                plugin.getLogger().info("recordIp: name=" + playerName + ", ip=" + ip + ", result=" + result + ", verified=" + verified + ", createdAt=" + createdAt);
+                future.complete(result && verified);
             } catch (Exception e) {
                 logException("recordIp", e);
                 future.complete(false);
@@ -362,10 +392,17 @@ public class DatabaseManager {
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source);
+                long createdAt = System.currentTimeMillis();
+                boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source, createdAt);
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
-                    plugin.getLogger().info("Punishment inserted: id=?, type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + "");
+                    boolean verified = verifyRecentPunishmentWrite(targetName, type, createdAt);
+                    plugin.getLogger().info("Punishment inserted: id=?, type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + ", verified=" + verified + ", createdAt=" + createdAt);
+                    if (!verified) {
+                        plugin.getLogger().warning("STORAGE CHECK FAIL: punishment not visible after insert. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
+                    }
+                } else {
+                    plugin.getLogger().warning("STORAGE CHECK FAIL: insert returned false. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
                 }
                 plugin.getLogger().fine("addPunishment: target=" + targetName + ", type=" + type + ", active=" + success + ", expiresAt=" + expiresAt);
                 future.complete(success);
@@ -612,9 +649,11 @@ public class DatabaseManager {
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                boolean success = logCommandInternal(executor, command, result);
-                plugin.getLogger().fine("logCommand: executor=" + executor + ", command=" + command + ", result=" + result + ", success=" + success);
-                future.complete(success);
+                long createdAt = System.currentTimeMillis();
+                boolean success = logCommandInternal(executor, command, result, createdAt);
+                boolean verified = success && verifyRecentCommandWrite(executor, command, createdAt);
+                plugin.getLogger().fine("logCommand: executor=" + executor + ", command=" + command + ", result=" + result + ", success=" + success + ", verified=" + verified + ", createdAt=" + createdAt);
+                future.complete(success && verified);
             } catch (Exception e) {
                 logException("logCommand", e);
                 future.complete(false);
@@ -650,7 +689,7 @@ public class DatabaseManager {
         return result;
     }
 
-    private synchronized boolean recordIpInternal(UUID uuid, String playerName, String ip) {
+    private synchronized boolean recordIpInternal(UUID uuid, String playerName, String ip, long createdAt) {
         if (!ensureConnection()) {
             return false;
         }
@@ -671,10 +710,10 @@ public class DatabaseManager {
             statement.setString(1, uuid.toString());
             statement.setString(2, playerName == null ? "unknown" : playerName);
             statement.setString(3, normalizedIp);
-            statement.setLong(4, System.currentTimeMillis());
+            statement.setLong(4, createdAt);
             boolean result = statement.executeUpdate() > 0;
             if (result) {
-                plugin.getLogger().info("IP recorded: uuid=" + uuid + ", name=" + playerName + ", ip=" + normalizedIp);
+                plugin.getLogger().info("IP recorded: uuid=" + uuid + ", name=" + playerName + ", ip=" + normalizedIp + ", createdAt=" + createdAt);
             }
             return result;
         } catch (SQLException e) {
@@ -685,7 +724,7 @@ public class DatabaseManager {
 
     private synchronized boolean addPunishmentInternal(UUID targetUuid, String targetName, String type,
                                                       String reason, String operator, long expiresAt,
-                                                      String ipAddress, String source) {
+                                                      String ipAddress, String source, long createdAt) {
         if (!ensureConnection()) {
             return false;
         }
@@ -703,14 +742,13 @@ public class DatabaseManager {
             statement.setString(3, type);
             statement.setString(4, reason);
             statement.setString(5, operator == null ? "system" : operator);
-            long createdAt = System.currentTimeMillis();
             statement.setLong(6, createdAt);
             statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
             statement.setString(8, ipAddress);
             statement.setString(9, source == null || source.trim().isEmpty() ? "manual" : source);
             boolean result = statement.executeUpdate() > 0;
             if (result) {
-                plugin.getLogger().info("Punishment inserted: id=generated, type=" + type + ", target=" + targetName + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt);
+                plugin.getLogger().info("Punishment inserted: id=generated, type=" + type + ", target=" + targetName + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
             }
             return result;
         } catch (SQLException e) {
@@ -865,7 +903,7 @@ public class DatabaseManager {
         return 0;
     }
 
-    private synchronized boolean logCommandInternal(String executor, String command, String result) {
+    private synchronized boolean logCommandInternal(String executor, String command, String result, long createdAt) {
         if (!ensureConnection()) {
             return false;
         }
@@ -875,7 +913,7 @@ public class DatabaseManager {
             statement.setString(1, executor == null ? "unknown" : executor);
             statement.setString(2, command == null ? "" : command);
             statement.setString(3, result);
-            statement.setLong(4, System.currentTimeMillis());
+            statement.setLong(4, createdAt);
             return statement.executeUpdate() > 0;
         } catch (SQLException e) {
             logException("logCommandInternal", e);
@@ -1056,6 +1094,95 @@ public class DatabaseManager {
             logException("rowCount", e);
         }
         return 0;
+    }
+
+    private int countRows(String tableName) {
+        if (!ensureConnection()) {
+            return 0;
+        }
+        return rowCount(tableName);
+    }
+
+    private int countRowsWhere(String tableName, String whereClause) {
+        if (!ensureConnection()) {
+            return 0;
+        }
+        String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE " + whereClause;
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            if (set.next()) {
+                return set.getInt(1);
+            }
+        } catch (SQLException e) {
+            logException("countRowsWhere", e);
+        }
+        return 0;
+    }
+
+    public boolean verifyRecentPunishmentWrite(String targetName, String type, long createdAt) {
+        if (!ensureConnection()) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM punishments WHERE target_name = ? AND type = ? AND created_at = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, targetName);
+            statement.setString(2, type);
+            statement.setLong(3, createdAt);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    boolean passed = set.getInt(1) > 0;
+                    plugin.getLogger().info("VERIFY PUNISHMENT: target=" + targetName + ", type=" + type + ", createdAt=" + createdAt + ", exists=" + passed);
+                    return passed;
+                }
+            }
+        } catch (SQLException e) {
+            logException("verifyRecentPunishmentWrite", e);
+        }
+        return false;
+    }
+
+    public boolean verifyRecentIpWrite(UUID uuid, String ip, long createdAt) {
+        if (!ensureConnection() || uuid == null || ip == null) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM ip_history WHERE player_uuid = ? AND ip_address = ? AND seen_at = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, ip);
+            statement.setLong(3, createdAt);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    boolean passed = set.getInt(1) > 0;
+                    plugin.getLogger().info("VERIFY IP: uuid=" + uuid + ", ip=" + ip + ", createdAt=" + createdAt + ", exists=" + passed);
+                    return passed;
+                }
+            }
+        } catch (SQLException e) {
+            logException("verifyRecentIpWrite", e);
+        }
+        return false;
+    }
+
+    public boolean verifyRecentCommandWrite(String executor, String command, long createdAt) {
+        if (!ensureConnection()) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM command_logs WHERE executor = ? AND command = ? AND created_at = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, executor == null ? "unknown" : executor);
+            statement.setString(2, command == null ? "" : command);
+            statement.setLong(3, createdAt);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    boolean passed = set.getInt(1) > 0;
+                    plugin.getLogger().info("VERIFY COMMAND: executor=" + executor + ", command=" + command + ", createdAt=" + createdAt + ", exists=" + passed);
+                    return passed;
+                }
+            }
+        } catch (SQLException e) {
+            logException("verifyRecentCommandWrite", e);
+        }
+        return false;
     }
 
     private void renameLegacyFile(File file, String targetName) {
