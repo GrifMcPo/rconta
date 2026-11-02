@@ -98,10 +98,16 @@ public class DatabaseManager {
         }
 
         storageAvailable = false;
+        boolean createdThisRun = !databaseFile.exists();
         try {
             plugin.getLogger().info("SQLite init: opening connection to " + databaseFile.getAbsolutePath());
             Class.forName("org.sqlite.JDBC");
             connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath());
+            if (createdThisRun) {
+                plugin.getLogger().info("Created new database");
+            } else {
+                plugin.getLogger().info("Opened existing database");
+            }
 
             try (Statement statement = connection.createStatement()) {
                 plugin.getLogger().info("SQLite init: applying PRAGMA journal_mode=WAL");
@@ -110,57 +116,11 @@ public class DatabaseManager {
                 statement.execute("PRAGMA foreign_keys=ON;");
                 plugin.getLogger().info("SQLite init: applying PRAGMA busy_timeout=5000");
                 statement.execute("PRAGMA busy_timeout = 5000;");
-
-                plugin.getLogger().info("SQLite init: creating table punishments");
-                statement.execute("CREATE TABLE IF NOT EXISTS punishments ("
-                        + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                        + "target_uuid TEXT, "
-                        + "target_name TEXT NOT NULL, "
-                        + "type TEXT NOT NULL, "
-                        + "reason TEXT, "
-                        + "operator TEXT NOT NULL, "
-                        + "created_at INTEGER NOT NULL, "
-                        + "expires_at INTEGER DEFAULT 0, "
-                        + "active INTEGER DEFAULT 1, "
-                        + "ip_address TEXT, "
-                        + "source TEXT DEFAULT 'manual')");
-
-                plugin.getLogger().info("SQLite init: creating table ip_history");
-                statement.execute("CREATE TABLE IF NOT EXISTS ip_history ("
-                        + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                        + "player_uuid TEXT NOT NULL, "
-                        + "player_name TEXT NOT NULL, "
-                        + "ip_address TEXT NOT NULL, "
-                        + "seen_at INTEGER NOT NULL)");
-
-                plugin.getLogger().info("SQLite init: creating index idx_ip_history_uuid");
-                statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_uuid ON ip_history(player_uuid, seen_at)");
-                plugin.getLogger().info("SQLite init: creating index idx_ip_history_ip");
-                statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_ip ON ip_history(ip_address, seen_at)");
-
-                plugin.getLogger().info("SQLite init: creating table command_logs");
-                statement.execute("CREATE TABLE IF NOT EXISTS command_logs ("
-                        + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                        + "executor TEXT NOT NULL, "
-                        + "command TEXT NOT NULL, "
-                        + "result TEXT, "
-                        + "created_at INTEGER NOT NULL)");
-
-                plugin.getLogger().info("SQLite init: creating table admins");
-                statement.execute("CREATE TABLE IF NOT EXISTS admins ("
-                        + "uuid TEXT PRIMARY KEY, "
-                        + "name TEXT, "
-                        + "added_by TEXT, "
-                        + "added_at INTEGER NOT NULL)");
-
-                plugin.getLogger().info("SQLite init: creating index idx_admins_name");
-                statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
+                initializeSchema(statement);
             }
 
             initialized = true;
             storageAvailable = true;
-            migrateLegacyHistoryIfNeeded();
-            migrateLegacyCommandLogsIfNeeded();
             plugin.getLogger().info("SQLite init complete: tables=[punishments, ip_history, command_logs, admins], storageAvailable=true");
         } catch (ClassNotFoundException e) {
             plugin.getLogger().log(Level.SEVERE, "SQLite JDBC driver not found in classpath; continuing with storage disabled.", e);
@@ -173,6 +133,53 @@ public class DatabaseManager {
             storageAvailable = false;
             connection = null;
         }
+    }
+
+    private void initializeSchema(Statement statement) throws SQLException {
+        plugin.getLogger().info("SQLite init: creating table punishments");
+        statement.execute("CREATE TABLE IF NOT EXISTS punishments ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "target_uuid TEXT, "
+                + "target_name TEXT NOT NULL, "
+                + "type TEXT NOT NULL, "
+                + "reason TEXT, "
+                + "operator TEXT NOT NULL, "
+                + "created_at INTEGER NOT NULL, "
+                + "expires_at INTEGER DEFAULT 0, "
+                + "active INTEGER DEFAULT 1, "
+                + "ip_address TEXT, "
+                + "source TEXT DEFAULT 'manual')");
+
+        plugin.getLogger().info("SQLite init: creating table ip_history");
+        statement.execute("CREATE TABLE IF NOT EXISTS ip_history ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "player_uuid TEXT NOT NULL, "
+                + "player_name TEXT NOT NULL, "
+                + "ip_address TEXT NOT NULL, "
+                + "seen_at INTEGER NOT NULL)");
+
+        plugin.getLogger().info("SQLite init: creating index idx_ip_history_uuid");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_uuid ON ip_history(player_uuid, seen_at)");
+        plugin.getLogger().info("SQLite init: creating index idx_ip_history_ip");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_ip_history_ip ON ip_history(ip_address, seen_at)");
+
+        plugin.getLogger().info("SQLite init: creating table command_logs");
+        statement.execute("CREATE TABLE IF NOT EXISTS command_logs ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "executor TEXT NOT NULL, "
+                + "command TEXT NOT NULL, "
+                + "result TEXT, "
+                + "created_at INTEGER NOT NULL)");
+
+        plugin.getLogger().info("SQLite init: creating table admins");
+        statement.execute("CREATE TABLE IF NOT EXISTS admins ("
+                + "uuid TEXT PRIMARY KEY, "
+                + "name TEXT, "
+                + "added_by TEXT, "
+                + "added_at INTEGER NOT NULL)");
+
+        plugin.getLogger().info("SQLite init: creating index idx_admins_name");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_admins_name ON admins(name)");
     }
 
     public synchronized void verifySchema() {
@@ -206,9 +213,17 @@ public class DatabaseManager {
         plugin.getLogger().info("Schema verify: expected=" + expected + ", found=" + foundCount + ", missing=" + missing);
 
         if (!missing.isEmpty()) {
-            plugin.getLogger().log(Level.SEVERE, "Missing SQLite tables: " + missing + ". Storage disabled.");
-            storageAvailable = false;
+            plugin.getLogger().severe("Missing SQLite tables: " + missing + ". Recreating schema.");
+            try (Statement statement = connection.createStatement()) {
+                initializeSchema(statement);
+            } catch (SQLException sqlEx) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to recreate missing SQLite schema.", sqlEx);
+                storageAvailable = false;
+                return;
+            }
+            storageAvailable = true;
         }
+        plugin.getLogger().info("Storage ready");
     }
 
     public synchronized void startPeriodicStorageAudit() {
@@ -306,7 +321,7 @@ public class DatabaseManager {
                 }
                 plugin.getLogger().info("Migrated admins.yml: " + imported + " entries");
             } else {
-                plugin.getLogger().info("Skipped migration: table not empty");
+                plugin.getLogger().info("Skipped migration admins.yml: table not empty");
             }
 
             File migratedFile = new File(adminsFile.getParentFile(), adminsFile.getName() + ".migrated");
@@ -385,14 +400,26 @@ public class DatabaseManager {
                                                       String reason, String operator, long expiresAt,
                                                       String ipAddress, String source) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        plugin.getLogger().info("[trace] addPunishment entered: name=" + targetName + ", type=" + type + ", storageAvailable=" + storageAvailable);
         if (!storageAvailable) {
             plugin.getLogger().warning("DatabaseManager.addPunishment: storage unavailable, returning false");
+            future.complete(false);
+            return future;
+        }
+        if (targetName == null || targetName.trim().isEmpty()) {
+            plugin.getLogger().warning("DatabaseManager.addPunishment: targetName is null/empty, returning false");
+            future.complete(false);
+            return future;
+        }
+        if (targetUuid == null) {
+            plugin.getLogger().warning("DatabaseManager.addPunishment: targetUuid is null for target=" + targetName + ", returning false");
             future.complete(false);
             return future;
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 long createdAt = System.currentTimeMillis();
+                plugin.getLogger().info("[trace] addPunishment SQL: INSERT INTO punishments (...) target=" + targetName + ", type=" + type + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
                 boolean success = addPunishmentInternal(targetUuid, targetName, type, reason, operator, expiresAt, ipAddress, source, createdAt);
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
@@ -404,10 +431,9 @@ public class DatabaseManager {
                 } else {
                     plugin.getLogger().warning("STORAGE CHECK FAIL: insert returned false. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
                 }
-                plugin.getLogger().fine("addPunishment: target=" + targetName + ", type=" + type + ", active=" + success + ", expiresAt=" + expiresAt);
                 future.complete(success);
             } catch (Exception e) {
-                logException("addPunishment", e);
+                plugin.getLogger().log(Level.SEVERE, "DatabaseManager.addPunishment failed.", e);
                 future.complete(false);
             }
         });
@@ -736,7 +762,7 @@ public class DatabaseManager {
 
         String sql = "INSERT INTO punishments(target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, targetUuid == null ? null : targetUuid.toString());
             statement.setString(2, targetName);
             statement.setString(3, type);
@@ -746,11 +772,19 @@ public class DatabaseManager {
             statement.setLong(7, expiresAt > 0 ? expiresAt : 0L);
             statement.setString(8, ipAddress);
             statement.setString(9, source == null || source.trim().isEmpty() ? "manual" : source);
-            boolean result = statement.executeUpdate() > 0;
-            if (result) {
-                plugin.getLogger().info("Punishment inserted: id=generated, type=" + type + ", target=" + targetName + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
+            int affected = statement.executeUpdate();
+            if (affected <= 0) {
+                return false;
             }
-            return result;
+            try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    long insertedId = generatedKeys.getLong(1);
+                    plugin.getLogger().info("[trace] addPunishment inserted: id=" + insertedId + ", target=" + targetName + ", type=" + type);
+                    plugin.getLogger().info("DatabaseManager.addPunishment: inserted id=" + insertedId + ", type=" + type + ", target=" + targetName + ", createdAt=" + createdAt);
+                    return true;
+                }
+            }
+            return true;
         } catch (SQLException e) {
             logException("addPunishmentInternal", e);
             return false;
@@ -964,7 +998,7 @@ public class DatabaseManager {
         }
         if (rowCount("punishments") > 0) {
             renameLegacyFile(historyFile, "history.yml.migrated");
-            plugin.getLogger().info("Skipped migration: table not empty");
+            plugin.getLogger().info("Skipped migration history.yml: table not empty");
             return;
         }
 
@@ -1009,7 +1043,7 @@ public class DatabaseManager {
                 }
             }
             if (imported > 0) {
-                plugin.getLogger().info("Migrated history.yml to punishments: " + imported + " entries");
+                plugin.getLogger().info("Migrated history.yml: " + imported + " entries");
             }
             renameLegacyFile(historyFile, "history.yml.migrated");
         } catch (Exception e) {
@@ -1033,7 +1067,7 @@ public class DatabaseManager {
             for (File file : files) {
                 renameLegacyFile(file, file.getName() + ".migrated");
             }
-            plugin.getLogger().info("Skipped migration: table not empty");
+            plugin.getLogger().info("Skipped migration logs_*.txt: table not empty");
             return;
         }
 
@@ -1076,7 +1110,7 @@ public class DatabaseManager {
             renameLegacyFile(file, file.getName() + ".migrated");
         }
         if (imported > 0) {
-            plugin.getLogger().info("Migrated logs_*.txt to command_logs: " + imported + " entries");
+            plugin.getLogger().info("Migrated logs_*.txt: " + imported + " entries");
         }
     }
 
