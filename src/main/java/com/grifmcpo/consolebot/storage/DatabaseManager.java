@@ -9,8 +9,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -36,7 +34,6 @@ public class DatabaseManager {
 
     private final JavaPlugin plugin;
     private final File databaseFile;
-    private final File sqliteLegacyFile;
     private final Map<String, List<Map<String, Object>>> activePunishmentCache = new HashMap<>();
     private Connection connection;
     private boolean initialized;
@@ -137,20 +134,20 @@ public class DatabaseManager {
     }
 
     public synchronized void verifySchema() {
+        init();
         if (connection == null || !storageAvailable) {
             plugin.getLogger().severe("Schema verify: storage unavailable, no DB tables checked");
             return;
         }
 
         List<String> found = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' ORDER BY TABLE_NAME");
+        try (PreparedStatement statement = connection.prepareStatement("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' ORDER BY TABLE_NAME");
              ResultSet resultSet = statement.executeQuery()) {
             while (resultSet.next()) {
-                found.add(resultSet.getString("TABLE_NAME").toLowerCase());
+                found.add(resultSet.getString("TABLE_NAME"));
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Schema verify failed while querying INFORMATION_SCHEMA.TABLES.", e);
+            plugin.getLogger().log(Level.SEVERE, "Schema verify failed while querying INFORMATION_SCHEMA.", e);
             storageAvailable = false;
             return;
         }
@@ -248,7 +245,7 @@ public class DatabaseManager {
             return;
         }
         if (!storageAvailable || connection == null) {
-            plugin.getLogger().warning("Storage is not available; skipping admins.yml migration.");
+            plugin.getLogger().warning("H2 storage is not available; skipping admins.yml migration.");
             return;
         }
 
@@ -259,7 +256,7 @@ public class DatabaseManager {
                     if (entry.getKey() == null || entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                         continue;
                     }
-                    String sql = "MERGE INTO admins KEY(uuid) VALUES (?, ?, ?, ?)";
+                    String sql = "MERGE INTO admins(uuid, name, added_by, added_at) KEY(uuid) VALUES (?, ?, ?, ?)";
                     try (PreparedStatement statement = connection.prepareStatement(sql)) {
                         statement.setString(1, entry.getKey());
                         statement.setString(2, entry.getValue());
@@ -276,8 +273,12 @@ public class DatabaseManager {
             }
 
             File migratedFile = new File(adminsFile.getParentFile(), adminsFile.getName() + ".migrated");
-            if (!migratedFile.exists() && adminsFile.renameTo(migratedFile)) {
-                plugin.getLogger().info("admins.yml renamed to admins.yml.migrated");
+            if (!migratedFile.exists()) {
+                if (adminsFile.renameTo(migratedFile)) {
+                    plugin.getLogger().info("admins.yml renamed to admins.yml.migrated");
+                } else {
+                    plugin.getLogger().warning("Не удалось переименовать admins.yml в admins.yml.migrated");
+                }
             }
         } catch (Exception e) {
             logException("migrateAdminsFromYaml", e);
@@ -344,8 +345,8 @@ public class DatabaseManager {
     }
 
     public CompletableFuture<Boolean> addPunishment(UUID targetUuid, String targetName, String type,
-                                                    String reason, String operator, long expiresAt,
-                                                    String ipAddress, String source) {
+                                                      String reason, String operator, long expiresAt,
+                                                      String ipAddress, String source) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         if (!storageAvailable) {
             plugin.getLogger().warning("DatabaseManager.addPunishment: storage unavailable, returning false");
@@ -359,13 +360,14 @@ public class DatabaseManager {
                 if (success) {
                     invalidateActivePunishmentCache(targetName);
                     boolean verified = verifyRecentPunishmentWrite(targetName, type, createdAt);
-                    plugin.getLogger().info("Punishment inserted: type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + ", verified=" + verified + ", createdAt=" + createdAt);
+                    plugin.getLogger().info("Punishment inserted: id=?, type=" + type + ", target=" + targetName + ", expiresAt=" + expiresAt + ", verified=" + verified + ", createdAt=" + createdAt);
                     if (!verified) {
                         plugin.getLogger().warning("STORAGE CHECK FAIL: punishment not visible after insert. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
                     }
                 } else {
                     plugin.getLogger().warning("STORAGE CHECK FAIL: insert returned false. target=" + targetName + ", type=" + type + ", createdAt=" + createdAt);
                 }
+                plugin.getLogger().fine("addPunishment: target=" + targetName + ", type=" + type + ", active=" + success + ", expiresAt=" + expiresAt);
                 future.complete(success);
             } catch (Exception e) {
                 logException("addPunishment", e);
@@ -388,6 +390,7 @@ public class DatabaseManager {
                 if (success) {
                     invalidateActivePunishmentCache(name);
                 }
+                plugin.getLogger().fine("deactivatePunishment: name=" + name + ", type=" + type + ", result=" + success);
                 future.complete(success);
             } catch (Exception e) {
                 logException("deactivatePunishment", e);
@@ -407,6 +410,7 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 List<Map<String, Object>> rows = getActivePunishmentsInternal(name);
+                plugin.getLogger().fine("getActivePunishments: name=" + name + ", rows=" + rows.size());
                 future.complete(rows);
             } catch (Exception e) {
                 logException("getActivePunishments", e);
@@ -528,6 +532,7 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 boolean result = isIpBannedInternal(ip);
+                plugin.getLogger().fine("isIpBanned: ip=" + ip + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("isIpBanned", e);
@@ -547,6 +552,7 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 List<String> result = getRecentIpsInternal(uuid, days);
+                plugin.getLogger().fine("getRecentIps: uuid=" + uuid + ", days=" + days + ", rows=" + result.size());
                 future.complete(result);
             } catch (Exception e) {
                 logException("getRecentIps", e);
@@ -566,6 +572,7 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int result = countDistinctIpsInternal(uuid, days);
+                plugin.getLogger().fine("countDistinctIps: uuid=" + uuid + ", days=" + days + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctIps", e);
@@ -585,6 +592,7 @@ public class DatabaseManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int result = countDistinctUuidsForIpInternal(ip, days);
+                plugin.getLogger().fine("countDistinctUuidsForIp: ip=" + ip + ", days=" + days + ", result=" + result);
                 future.complete(result);
             } catch (Exception e) {
                 logException("countDistinctUuidsForIp", e);
@@ -606,6 +614,7 @@ public class DatabaseManager {
                 long createdAt = System.currentTimeMillis();
                 boolean success = logCommandInternal(executor, command, result, createdAt);
                 boolean verified = success && verifyRecentCommandWrite(executor, command, createdAt);
+                plugin.getLogger().fine("logCommand: executor=" + executor + ", command=" + command + ", result=" + result + ", success=" + success + ", verified=" + verified + ", createdAt=" + createdAt);
                 future.complete(success && verified);
             } catch (Exception e) {
                 logException("logCommand", e);
@@ -643,68 +652,109 @@ public class DatabaseManager {
     }
 
     public List<Map<String, Object>> getBaseBans(int limit) {
-        if (!storageAvailable) {
+        if (!storageAvailable || connection == null) {
             return new ArrayList<>();
         }
+        int safeLimit = Math.max(1, Math.min(50, limit > 0 ? limit : 10));
         String sql = "SELECT * FROM punishments ORDER BY created_at DESC LIMIT ?";
-        List<Map<String, Object>> result = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
-            try (ResultSet set = statement.executeQuery()) {
-                while (set.next()) {
-                    result.add(mapRow(set));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, safeLimit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("target_uuid", rs.getString("target_uuid"));
+                    row.put("target_name", rs.getString("target_name"));
+                    row.put("type", rs.getString("type"));
+                    row.put("reason", rs.getString("reason"));
+                    row.put("operator", rs.getString("operator"));
+                    row.put("created_at", rs.getLong("created_at"));
+                    row.put("expires_at", rs.getLong("expires_at"));
+                    row.put("active", rs.getBoolean("active"));
+                    row.put("ip_address", rs.getString("ip_address"));
+                    row.put("source", rs.getString("source"));
+                    rows.add(row);
                 }
             }
         } catch (SQLException e) {
             logException("getBaseBans", e);
         }
-        return result;
+        return rows;
     }
 
     public List<Map<String, Object>> getBaseIpHistory(String playerName, int limit) {
-        if (!storageAvailable) {
+        if (!storageAvailable || connection == null || playerName == null || playerName.trim().isEmpty()) {
             return new ArrayList<>();
         }
+        int safeLimit = Math.max(1, Math.min(50, limit > 0 ? limit : 10));
         String sql = "SELECT * FROM ip_history WHERE player_name = ? ORDER BY seen_at DESC LIMIT ?";
-        List<Map<String, Object>> result = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, playerName == null ? "" : playerName);
-            statement.setInt(2, Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
-            try (ResultSet set = statement.executeQuery()) {
-                while (set.next()) {
-                    result.add(ipHistoryRow(set));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, playerName);
+            ps.setInt(2, safeLimit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("player_uuid", rs.getString("player_uuid"));
+                    row.put("player_name", rs.getString("player_name"));
+                    row.put("ip_address", rs.getString("ip_address"));
+                    row.put("seen_at", rs.getLong("seen_at"));
+                    rows.add(row);
                 }
             }
         } catch (SQLException e) {
             logException("getBaseIpHistory", e);
         }
-        return result;
+        return rows;
     }
 
     public List<Map<String, Object>> getBaseLogs(int limit) {
-        return getCommandLogs(Math.max(1, Math.min(50, limit > 0 ? limit : 10)));
+        if (!storageAvailable || connection == null) {
+            return new ArrayList<>();
+        }
+        int safeLimit = Math.max(1, Math.min(50, limit > 0 ? limit : 10));
+        String sql = "SELECT * FROM command_logs ORDER BY created_at DESC LIMIT ?";
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, safeLimit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("executor", rs.getString("executor"));
+                    row.put("command", rs.getString("command"));
+                    row.put("result", rs.getString("result"));
+                    row.put("created_at", rs.getLong("created_at"));
+                    rows.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            logException("getBaseLogs", e);
+        }
+        return rows;
     }
 
     public List<Map<String, Object>> getAdminsRows() {
-        if (!storageAvailable) {
+        if (!storageAvailable || connection == null) {
             return new ArrayList<>();
         }
         String sql = "SELECT * FROM admins ORDER BY added_at DESC";
-        List<Map<String, Object>> result = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet set = statement.executeQuery()) {
-            while (set.next()) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
                 Map<String, Object> row = new HashMap<>();
-                row.put("uuid", set.getString("uuid"));
-                row.put("name", set.getString("name"));
-                row.put("added_by", set.getString("added_by"));
-                row.put("added_at", set.getLong("added_at"));
-                result.add(row);
+                row.put("uuid", rs.getString("uuid"));
+                row.put("name", rs.getString("name"));
+                row.put("added_by", rs.getString("added_by"));
+                row.put("added_at", rs.getLong("added_at"));
+                rows.add(row);
             }
         } catch (SQLException e) {
             logException("getAdminsRows", e);
         }
-        return result;
+        return rows;
     }
 
     public boolean checkpointSync() {
@@ -721,7 +771,7 @@ public class DatabaseManager {
     }
 
     private String getJdbcUrl() {
-        return "jdbc:h2:file:" + plugin.getDataFolder().getAbsolutePath() + File.separator + "data;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE";
+        return "jdbc:h2:file:" + plugin.getDataFolder().getAbsolutePath() + File.separator + "data;AUTO_SERVER=TRUE";
     }
 
     private void createCoreTables() throws SQLException {
@@ -792,7 +842,7 @@ public class DatabaseManager {
         File migrated = new File(sqliteFile.getParentFile(), sqliteFile.getName() + ".migrated");
         if (!migrated.exists()) {
             try {
-                Files.move(sqliteFile.toPath(), migrated.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                java.nio.file.Files.move(sqliteFile.toPath(), migrated.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 plugin.getLogger().info("data.db renamed to data.db.migrated");
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Failed to rename SQLite file to .migrated.", e);
@@ -830,15 +880,15 @@ public class DatabaseManager {
             }
             return rows.size();
         } catch (SQLException e) {
-            logException("copyTable(" + sourceTable + ")", e);
+            logException("copyTable", e);
             return 0;
         }
     }
 
     private void insertPunishmentRow(Map<String, Object> row) throws SQLException {
-        String sql = "MERGE INTO punishments KEY(id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "MERGE INTO punishments(id, target_uuid, target_name, type, reason, operator, created_at, expires_at, active, ip_address, source) KEY(id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(1, row.get("id"));
             ps.setObject(2, row.get("target_uuid"));
             ps.setObject(3, row.get("target_name"));
             ps.setObject(4, row.get("type"));
@@ -854,9 +904,9 @@ public class DatabaseManager {
     }
 
     private void insertIpHistoryRow(Map<String, Object> row) throws SQLException {
-        String sql = "MERGE INTO ip_history KEY(id) VALUES (?, ?, ?, ?, ?)";
+        String sql = "MERGE INTO ip_history(id, player_uuid, player_name, ip_address, seen_at) KEY(id) VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(1, row.get("id"));
             ps.setObject(2, row.get("player_uuid"));
             ps.setObject(3, row.get("player_name"));
             ps.setObject(4, row.get("ip_address"));
@@ -866,9 +916,9 @@ public class DatabaseManager {
     }
 
     private void insertCommandLogRow(Map<String, Object> row) throws SQLException {
-        String sql = "MERGE INTO command_logs KEY(id) VALUES (?, ?, ?, ?)";
+        String sql = "MERGE INTO command_logs(id, executor, command, result, created_at) KEY(id) VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setObject(1, row.getOrDefault("id", null));
+            ps.setObject(1, row.get("id"));
             ps.setObject(2, row.get("executor"));
             ps.setObject(3, row.get("command"));
             ps.setObject(4, row.get("result"));
@@ -878,7 +928,7 @@ public class DatabaseManager {
     }
 
     private void insertAdminRow(Map<String, Object> row) throws SQLException {
-        String sql = "MERGE INTO admins KEY(uuid) VALUES (?, ?, ?, ?)";
+        String sql = "MERGE INTO admins(uuid, name, added_by, added_at) KEY(uuid) VALUES (?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, row.get("uuid"));
             ps.setObject(2, row.get("name"));
@@ -886,32 +936,6 @@ public class DatabaseManager {
             ps.setObject(4, row.get("added_at"));
             ps.executeUpdate();
         }
-    }
-
-    private Map<String, Object> mapRow(ResultSet set) throws SQLException {
-        Map<String, Object> row = new HashMap<>();
-        row.put("id", set.getLong("id"));
-        row.put("target_uuid", set.getString("target_uuid"));
-        row.put("target_name", set.getString("target_name"));
-        row.put("type", set.getString("type"));
-        row.put("reason", set.getString("reason"));
-        row.put("operator", set.getString("operator"));
-        row.put("created_at", set.getLong("created_at"));
-        row.put("expires_at", set.getLong("expires_at"));
-        row.put("active", set.getInt("active"));
-        row.put("ip_address", set.getString("ip_address"));
-        row.put("source", set.getString("source"));
-        return row;
-    }
-
-    private Map<String, Object> ipHistoryRow(ResultSet set) throws SQLException {
-        Map<String, Object> row = new HashMap<>();
-        row.put("id", set.getLong("id"));
-        row.put("player_uuid", set.getString("player_uuid"));
-        row.put("player_name", set.getString("player_name"));
-        row.put("ip_address", set.getString("ip_address"));
-        row.put("seen_at", set.getLong("seen_at"));
-        return row;
     }
 
     private synchronized boolean recordIpInternal(UUID uuid, String playerName, String ip, long createdAt) {
@@ -948,8 +972,8 @@ public class DatabaseManager {
     }
 
     private synchronized boolean addPunishmentInternal(UUID targetUuid, String targetName, String type,
-                                                      String reason, String operator, long expiresAt,
-                                                      String ipAddress, String source, long createdAt) {
+                                                       String reason, String operator, long expiresAt,
+                                                       String ipAddress, String source, long createdAt) {
         if (!ensureConnection()) {
             return false;
         }
@@ -972,7 +996,7 @@ public class DatabaseManager {
             statement.setString(9, source == null || source.trim().isEmpty() ? "manual" : source);
             boolean result = statement.executeUpdate() > 0;
             if (result) {
-                plugin.getLogger().info("Punishment inserted: target=" + targetName + ", type=" + type + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
+                plugin.getLogger().info("Punishment inserted: id=generated, type=" + type + ", target=" + targetName + ", operator=" + (operator == null ? "system" : operator) + ", expiresAt=" + expiresAt + ", createdAt=" + createdAt);
             }
             return result;
         } catch (SQLException e) {
@@ -1135,7 +1159,7 @@ public class DatabaseManager {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, executor == null ? "unknown" : executor);
             statement.setString(2, command == null ? "" : command);
-            statement.setString(3, result == null ? "" : result);
+            statement.setString(3, result);
             statement.setLong(4, createdAt);
             return statement.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -1453,3 +1477,4 @@ public class DatabaseManager {
         plugin.getLogger().log(Level.SEVERE, "DatabaseManager." + method + " failed.", e);
     }
 }
+
